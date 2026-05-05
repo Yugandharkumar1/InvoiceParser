@@ -1,0 +1,67 @@
+@model InvoiceParser.Web.Models.UploadViewModel
+
+@{
+    ViewData["Title"] = "Upload Invoice";
+}
+
+<div class="row justify-content-center">
+    <div class="col-lg-7 col-md-9">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Upload Invoice PDF</h4>
+            </div>
+            <div class="card-body">
+                <form asp-action="Upload" method="post" enctype="multipart/form-data">
+                    @Html.AntiForgeryToken()
+
+                    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+                    <div class="mb-3">
+                        <label asp-for="CustomerId" class="form-label fw-semibold">Customer</label>
+                        <select asp-for="CustomerId" asp-items="Model.Customers" class="form-select">
+                            <option value="">-- Select Customer --</option>
+                        </select>
+                        <span asp-validation-for="CustomerId" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="CarrierId" class="form-label fw-semibold">Carrier</label>
+                        <select asp-for="CarrierId" asp-items="Model.Carriers" class="form-select">
+                            <option value="">-- Select Carrier --</option>
+                        </select>
+                        <span asp-validation-for="CarrierId" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-4">
+                        <label asp-for="PdfFile" class="form-label fw-semibold">Invoice PDF</label>
+                        <input asp-for="PdfFile" type="file" class="form-control" accept=".pdf" />
+                        <span asp-validation-for="PdfFile" class="text-danger"></span>
+                        <div class="form-text">Upload a PDF invoice to parse and extract data.</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary px-4">
+                        Parse Invoice
+                    </button>
+                    <a asp-action="Index" class="btn btn-outline-secondary ms-2">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function () {
+            $('#CustomerId').select2({
+                theme: 'bootstrap-5',
+                placeholder: '-- Search Customer --',
+                allowClear: true
+            });
+            $('#CarrierId').select2({
+                theme: 'bootstrap-5',
+                placeholder: '-- Search Carrier --',
+                allowClear: true
+            });
+        });
+    </script>
+}

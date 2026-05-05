@@ -1,0 +1,33 @@
+from .tesseract_layer import (
+    OcrLine,
+    OcrPage,
+    OcrSection,
+    OcrWord,
+    flatten_pages_to_words,
+    full_text_from_pages,
+    ocr_image_bytes,
+    ocr_pdf_bytes,
+    pages_from_cached,
+    serialize_ocr_page_for_api,
+    sniff_is_pdf,
+    cache_key,
+    load_cached_ocr,
+    save_cached_ocr,
+)
+
+__all__ = [
+    "OcrLine",
+    "OcrPage",
+    "OcrSection",
+    "OcrWord",
+    "flatten_pages_to_words",
+    "full_text_from_pages",
+    "ocr_image_bytes",
+    "ocr_pdf_bytes",
+    "pages_from_cached",
+    "serialize_ocr_page_for_api",
+    "sniff_is_pdf",
+    "cache_key",
+    "load_cached_ocr",
+    "save_cached_ocr",
+]

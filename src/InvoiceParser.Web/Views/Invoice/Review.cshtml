@@ -1,0 +1,1548 @@
+@model InvoiceParser.Web.Models.ReviewViewModel
+
+@{
+    ViewData["Title"] = "Review Parsed Invoice";
+}
+
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">Review Parsed Data</h4>
+                <span class="badge bg-dark">Confirm before saving</span>
+            </div>
+            <div class="card-body">
+
+                <!-- Accuracy banner -->
+                <div id="accuracyBanner" class="alert alert-info d-flex align-items-center mb-4" style="display:none !important;">
+                    <div class="me-3">
+                        <strong>Parser Accuracy:</strong>
+                        <span id="accuracyPercent" class="fs-5 fw-bold">—</span>
+                    </div>
+                    <div class="progress flex-grow-1" style="height:8px;">
+                        <div id="accuracyBar" class="progress-bar bg-success" role="progressbar" style="width:0%"></div>
+                    </div>
+                    <span id="accuracyDetail" class="ms-3 text-muted small"></span>
+                </div>
+
+                <form asp-action="Save" method="post">
+                    @Html.AntiForgeryToken()
+
+                    <input type="hidden" asp-for="CustomerId" />
+                    <input type="hidden" asp-for="CustomerName" />
+                    <input type="hidden" asp-for="CarrierId" />
+                    <input type="hidden" asp-for="CarrierName" />
+                    <input type="hidden" asp-for="CarrierCode" />
+                    <input type="hidden" asp-for="PdfText" />
+                    <input type="hidden" asp-for="PythonParseId" />
+                    <input type="hidden" asp-for="PythonOcrJson" />
+                    <input type="hidden" asp-for="PythonSource" />
+                    <input type="hidden" asp-for="PythonVendorHint" />
+
+                    <!-- Hidden original values for summary feedback -->
+                    <input type="hidden" asp-for="Orig_InvoiceNumber" />
+                    <input type="hidden" asp-for="Orig_CarrierAccount" />
+                    <input type="hidden" asp-for="Orig_InvoiceDate" />
+                    <input type="hidden" asp-for="Orig_InvoiceStartDate" />
+                    <input type="hidden" asp-for="Orig_InvoiceEndDate" />
+                    <input type="hidden" asp-for="Orig_InvoiceDueDate" />
+                    <input type="hidden" asp-for="Orig_BeginningBalance" />
+                    <input type="hidden" asp-for="Orig_Payment" />
+                    <input type="hidden" asp-for="Orig_PreviousAdjustments" />
+                    <input type="hidden" asp-for="Orig_CurrentAdjustments" />
+                    <input type="hidden" asp-for="Orig_CurrentCharges" />
+                    <input type="hidden" asp-for="Orig_CurrentTax" />
+                    <input type="hidden" asp-for="Orig_EndingBalance" />
+                    <input type="hidden" asp-for="Orig_ChargeCount" />
+
+                    <!-- Hidden original charges JSON for charge-level feedback -->
+                    <input type="hidden" asp-for="OriginalChargesJson" />
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <span class="text-muted small">Customer</span>
+                            <p class="fw-semibold mb-0">@Model.CustomerName</p>
+                        </div>
+                        <div class="col-md-6">
+                            <span class="text-muted small">Carrier</span>
+                            <p class="fw-semibold mb-0">@Model.CarrierName</p>
+                        </div>
+                    </div>
+
+                    <hr />
+                    <h5 class="mb-3">Invoice Summary</h5>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted d-flex align-items-center gap-1">
+                                Invoice Number
+                                @if (!string.IsNullOrWhiteSpace(Model.Orig_InvoiceNumber))
+                                { <span class="badge bg-success badge-status" title="Auto-detected by parser">Auto</span> }
+                                else
+                                { <span class="badge bg-secondary badge-status" title="Not detected — enter manually">Manual</span> }
+                            </label>
+                            <input asp-for="InvoiceNumber" class="form-control tracked-field"
+                                   data-original="@Model.Orig_InvoiceNumber" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted d-flex align-items-center gap-1">
+                                Account Number
+                                @if (!string.IsNullOrWhiteSpace(Model.Orig_CarrierAccount))
+                                { <span class="badge bg-success badge-status" title="Auto-detected by parser">Auto</span> }
+                                else
+                                { <span class="badge bg-secondary badge-status" title="Not detected — enter manually">Manual</span> }
+                            </label>
+                            <input asp-for="CarrierAccount" class="form-control tracked-field"
+                                   data-original="@Model.Orig_CarrierAccount" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted d-flex align-items-center gap-1">
+                                Invoice Date
+                                @if (!string.IsNullOrWhiteSpace(Model.Orig_InvoiceDate))
+                                { <span class="badge bg-success badge-status" title="Auto-detected by parser">Auto</span> }
+                                else
+                                { <span class="badge bg-secondary badge-status" title="Not detected — enter manually">Manual</span> }
+                            </label>
+                            <input asp-for="InvoiceDate" type="date" class="form-control tracked-field"
+                                   data-original="@Model.Orig_InvoiceDate" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted d-flex align-items-center gap-1">
+                                Statement Start Date
+                                @if (!string.IsNullOrWhiteSpace(Model.Orig_InvoiceStartDate))
+                                { <span class="badge bg-success badge-status" title="Auto-detected by parser">Auto</span> }
+                                else
+                                { <span class="badge bg-secondary badge-status" title="Not detected — enter manually">Manual</span> }
+                            </label>
+                            <input asp-for="InvoiceStartDate" type="date" class="form-control tracked-field"
+                                   data-original="@Model.Orig_InvoiceStartDate" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted d-flex align-items-center gap-1">
+                                Statement End Date
+                                @if (!string.IsNullOrWhiteSpace(Model.Orig_InvoiceEndDate))
+                                { <span class="badge bg-success badge-status" title="Auto-detected by parser">Auto</span> }
+                                else
+                                { <span class="badge bg-secondary badge-status" title="Not detected — enter manually">Manual</span> }
+                            </label>
+                            <input asp-for="InvoiceEndDate" type="date" class="form-control tracked-field"
+                                   data-original="@Model.Orig_InvoiceEndDate" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted d-flex align-items-center gap-1">
+                                Due Date
+                                @if (!string.IsNullOrWhiteSpace(Model.Orig_InvoiceDueDate))
+                                { <span class="badge bg-success badge-status" title="Auto-detected by parser">Auto</span> }
+                                else
+                                { <span class="badge bg-secondary badge-status" title="Not detected — enter manually">Manual</span> }
+                            </label>
+                            <input asp-for="InvoiceDueDate" type="date" class="form-control tracked-field"
+                                   data-original="@Model.Orig_InvoiceDueDate" />
+                        </div>
+                    </div>
+
+                    <h5 class="mb-3">Financial Summary</h5>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted d-flex align-items-center gap-1">
+                                Previous Balance
+                                @if (!string.IsNullOrWhiteSpace(Model.Orig_BeginningBalance))
+                                { <span class="badge bg-success badge-status">Auto</span> }
+                                else
+                                { <span class="badge bg-secondary badge-status">Manual</span> }
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input asp-for="BeginningBalance" type="number" step="0.01" class="form-control tracked-field"
+                                       data-original="@Model.Orig_BeginningBalance" />
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted d-flex align-items-center gap-1">
+                                Payments
+                                @if (!string.IsNullOrWhiteSpace(Model.Orig_Payment))
+                                { <span class="badge bg-success badge-status">Auto</span> }
+                                else
+                                { <span class="badge bg-secondary badge-status">Manual</span> }
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input asp-for="Payment" type="number" step="0.01" class="form-control tracked-field"
+                                       data-original="@Model.Orig_Payment" />
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted d-flex align-items-center gap-1">
+                                Previous Adjustments
+                                @if (!string.IsNullOrWhiteSpace(Model.Orig_PreviousAdjustments))
+                                { <span class="badge bg-success badge-status">Auto</span> }
+                                else
+                                { <span class="badge bg-secondary badge-status">Manual</span> }
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input asp-for="PreviousAdjustments" type="number" step="0.01" class="form-control tracked-field"
+                                       data-original="@Model.Orig_PreviousAdjustments" />
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted d-flex align-items-center gap-1">
+                                Current Adjustments
+                                @if (!string.IsNullOrWhiteSpace(Model.Orig_CurrentAdjustments))
+                                { <span class="badge bg-success badge-status">Auto</span> }
+                                else
+                                { <span class="badge bg-secondary badge-status">Manual</span> }
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input asp-for="CurrentAdjustments" type="number" step="0.01" class="form-control tracked-field"
+                                       data-original="@Model.Orig_CurrentAdjustments" />
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted d-flex align-items-center gap-1">
+                                Current Charges
+                                @if (!string.IsNullOrWhiteSpace(Model.Orig_CurrentCharges))
+                                { <span class="badge bg-success badge-status">Auto</span> }
+                                else
+                                { <span class="badge bg-secondary badge-status">Manual</span> }
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input asp-for="CurrentCharges" type="number" step="0.01" class="form-control tracked-field"
+                                       data-original="@Model.Orig_CurrentCharges" />
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted d-flex align-items-center gap-1">
+                                Taxes, Fees &amp; Surcharges
+                                @if (!string.IsNullOrWhiteSpace(Model.Orig_CurrentTax))
+                                { <span class="badge bg-success badge-status">Auto</span> }
+                                else
+                                { <span class="badge bg-secondary badge-status">Manual</span> }
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input asp-for="CurrentTax" type="number" step="0.01" class="form-control tracked-field"
+                                       data-original="@Model.Orig_CurrentTax" />
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted fw-bold d-flex align-items-center gap-1">
+                                Balance Due
+                                @if (!string.IsNullOrWhiteSpace(Model.Orig_EndingBalance))
+                                { <span class="badge bg-success badge-status">Auto</span> }
+                                else
+                                { <span class="badge bg-secondary badge-status">Manual</span> }
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input asp-for="EndingBalance" type="number" step="0.01" class="form-control fw-bold tracked-field"
+                                       data-original="@Model.Orig_EndingBalance" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr />
+
+                    <!-- Tab Navigation -->
+                    <ul class="nav nav-tabs mb-3" id="dataGridTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="charges-tab" data-bs-toggle="tab" data-bs-target="#chargesPane"
+                                    type="button" role="tab" aria-controls="chargesPane" aria-selected="true">
+                                Charges <span class="badge bg-primary ms-1">@Model.Charges.Count</span>
+                            </button>
+                        </li>
+                        @if (Model.Usages.Count > 0)
+                        {
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="usage-tab" data-bs-toggle="tab" data-bs-target="#usagePane"
+                                        type="button" role="tab" aria-controls="usagePane" aria-selected="false">
+                                    Usage <span class="badge bg-info ms-1">@Model.Usages.Count</span>
+                                </button>
+                            </li>
+                        }
+                        @if (Model.Inventories.Count > 0)
+                        {
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="inventory-tab" data-bs-toggle="tab" data-bs-target="#inventoryPane"
+                                        type="button" role="tab" aria-controls="inventoryPane" aria-selected="false">
+                                    Inventory <span class="badge bg-secondary ms-1">@Model.Inventories.Count</span>
+                                </button>
+                            </li>
+                        }
+                    </ul>
+
+                    <!-- Tab Content -->
+                    <div class="tab-content" id="dataGridTabContent">
+
+                    <!-- === CHARGES TAB === -->
+                    <div class="tab-pane fade show active" id="chargesPane" role="tabpanel" aria-labelledby="charges-tab">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">
+                            Charge Line Items
+                            @if (Model.Orig_ChargeCount > 0)
+                            { <span class="badge bg-success badge-status ms-2">@Model.Orig_ChargeCount Auto</span> }
+                            else
+                            { <span class="badge bg-secondary badge-status ms-2">0 Auto</span> }
+                        </h5>
+                        <button type="button" class="btn btn-sm btn-outline-success" id="addChargeRow">
+                            + Add Row
+                        </button>
+                    </div>
+
+                    <div class="d-flex gap-2 mb-2 align-items-center flex-wrap">
+                        <div class="input-group input-group-sm" style="flex:1; min-width:200px;">
+                            <span class="input-group-text">&#128269;</span>
+                            <input type="text" id="chargeSearchInput" class="form-control form-control-sm"
+                                   placeholder="Search by description, line, or location..." />
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="clearSearch"
+                                    style="display:none;" title="Clear search">&times;</button>
+                        </div>
+                        <div class="input-group input-group-sm" style="width:auto; min-width:180px;">
+                            <label class="input-group-text" for="chargeGroupBy">Group by</label>
+                            <select class="form-select form-select-sm" id="chargeGroupBy">
+                                <option value="none" selected>None</option>
+                                <option value="line">Line</option>
+                                <option value="location">Location</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="searchResultInfo" class="text-muted small mb-1" style="display:none;"></div>
+
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover" id="chargesTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 4%">#</th>
+                                    <th style="width: 4%"></th>
+                                    <th style="width: 28%">Description</th>
+                                    <th style="width: 14%">Amount</th>
+                                    <th style="width: 18%">Line</th>
+                                    <th style="width: 18%">Location</th>
+                                    <th style="width: 8%"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @for (var i = 0; i < Model.Charges.Count; i++)
+                                {
+                                    <tr data-auto="true"
+                                        data-orig-desc="@Model.Charges[i].ChargeDescription"
+                                        data-orig-amt="@Model.Charges[i].Amount">
+                                        <td class="text-center align-middle row-number">@(i + 1)</td>
+                                        <td class="text-center align-middle">
+                                            <span class="badge bg-success badge-status" title="Auto-detected">Auto</span>
+                                        </td>
+                                        <td>
+                                            <input name="Charges[@i].ChargeDescription"
+                                                   value="@Model.Charges[i].ChargeDescription"
+                                                   class="form-control form-control-sm charge-desc" />
+                                        </td>
+                                        <td>
+                                            <div class="input-group input-group-sm">
+                                                <span class="input-group-text">$</span>
+                                                <input name="Charges[@i].Amount"
+                                                       value="@Model.Charges[i].Amount"
+                                                       type="number" step="0.01"
+                                                       class="form-control form-control-sm charge-amount" />
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <input name="Charges[@i].Line"
+                                                   value="@Model.Charges[i].Line"
+                                                   class="form-control form-control-sm" />
+                                        </td>
+                                        <td>
+                                            <input name="Charges[@i].Location"
+                                                   value="@Model.Charges[i].Location"
+                                                   class="form-control form-control-sm" />
+                                        </td>
+                                        <td class="text-center">
+                                            <button type="button" class="btn btn-sm btn-outline-danger remove-row">X</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot class="table-light">
+                                <tr>
+                                    <td colspan="3" class="text-end fw-bold">Total:</td>
+                                    <td>
+                                        <div class="input-group input-group-sm">
+                                            <span class="input-group-text">$</span>
+                                            <input type="text" id="chargeTotal" class="form-control form-control-sm fw-bold" readonly />
+                                        </div>
+                                    </td>
+                                    <td colspan="3"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <div id="chargePagination" class="d-flex justify-content-between align-items-center mt-2 mb-2" style="display:none !important;">
+                        <span id="pageInfo" class="text-muted small"></span>
+                        <nav>
+                            <ul class="pagination pagination-sm mb-0" id="pageButtons"></ul>
+                        </nav>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="toggleAllRows">Show All</button>
+                    </div>
+
+                    <div id="chargeMismatchBanner" class="alert mt-1 mb-2" style="display:none;">
+                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                            <div>
+                                <strong id="mismatchIcon"></strong>
+                                <span id="mismatchMessage"></span>
+                            </div>
+                            <span id="mismatchDetail" class="small"></span>
+                        </div>
+                    </div>
+
+                    @if (Model.Charges.Count == 0)
+                    {
+                        <div class="alert alert-info">
+                            No charge line items were parsed. You can add them manually using the "+ Add Row" button above.
+                        </div>
+                    }
+                    </div><!-- end chargesPane -->
+
+                    <!-- === USAGE TAB === -->
+                    @if (Model.Usages.Count > 0)
+                    {
+                    <div class="tab-pane fade" id="usagePane" role="tabpanel" aria-labelledby="usage-tab">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="mb-0">Usage Items <span class="badge bg-info ms-1">@Model.Usages.Count</span></h5>
+                            <button type="button" class="btn btn-sm btn-outline-success" id="addUsageRow">+ Add Row</button>
+                        </div>
+
+                        <div class="input-group input-group-sm mb-2">
+                            <span class="input-group-text">&#128269;</span>
+                            <input type="text" id="usageSearchInput" class="form-control form-control-sm"
+                                   placeholder="Search by description, type, or limit..." />
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-hover table-sm" id="usageTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width:4%">#</th>
+                                        <th style="width:15%">Line Number</th>
+                                        <th style="width:25%">Description</th>
+                                        <th style="width:10%">Type</th>
+                                        <th style="width:15%">Usage Limit</th>
+                                        <th style="width:15%">Usage Cost</th>
+                                        <th style="width:8%"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (var i = 0; i < Model.Usages.Count; i++)
+                                    {
+                                        <tr>
+                                            <td class="text-center align-middle row-number">@(i + 1)</td>
+                                            <input type="hidden" name="Usages[@i].EmployeeName" value="@Model.Usages[i].EmployeeName" />
+                                            <input type="hidden" name="Usages[@i].UsageAmount" value="@Model.Usages[i].UsageAmount" />
+                                            <td>
+                                                <input name="Usages[@i].LineNumber" value="@Model.Usages[i].LineNumber"
+                                                       class="form-control form-control-sm" />
+                                            </td>
+                                            <td>
+                                                <input name="Usages[@i].UsocName" value="@Model.Usages[i].UsocName"
+                                                       class="form-control form-control-sm" />
+                                            </td>
+                                            <td>
+                                                @{
+                                                    var usageTypeVal = Model.Usages[i].UsageType ?? "";
+                                                }
+                                                <select name="Usages[@i].UsageType" class="form-select form-select-sm">
+                                                    @foreach (var opt in new[] { ("V","Voice"), ("D","Data"), ("T","Text"), ("R","Roaming") })
+                                                    {
+                                                        if (usageTypeVal == opt.Item1)
+                                                        { <option value="@opt.Item1" selected>@opt.Item2</option> }
+                                                        else
+                                                        { <option value="@opt.Item1">@opt.Item2</option> }
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td>
+                                                <input name="Usages[@i].UsageLimit"
+                                                       value="@(Model.Usages[i].UsageLimit == "-1" ? "Unlimited" : Model.Usages[i].UsageLimit)"
+                                                       class="form-control form-control-sm" />
+                                            </td>
+                                            <td>
+                                                <div class="input-group input-group-sm">
+                                                    <span class="input-group-text">$</span>
+                                                    <input name="Usages[@i].Charge" value="@Model.Usages[i].Charge"
+                                                           type="number" step="0.01" class="form-control form-control-sm" />
+                                                </div>
+                                            </td>
+                                            <td class="text-center">
+                                                <button type="button" class="btn btn-sm btn-outline-danger remove-usage-row">X</button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div id="usagePagination" class="d-flex justify-content-between align-items-center mt-2" style="display:none;">
+                            <span id="usagePageInfo" class="text-muted small"></span>
+                            <nav>
+                                <ul class="pagination pagination-sm mb-0" id="usagePageButtons"></ul>
+                            </nav>
+                        </div>
+                    </div>
+                    }
+
+                    <!-- === INVENTORY TAB === -->
+                    @if (Model.Inventories.Count > 0)
+                    {
+                    <div class="tab-pane fade" id="inventoryPane" role="tabpanel" aria-labelledby="inventory-tab">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="mb-0">Inventory <span class="badge bg-secondary ms-1">@Model.Inventories.Count</span></h5>
+                            <button type="button" class="btn btn-sm btn-outline-success" id="addInventoryRow">+ Add Row</button>
+                        </div>
+
+                        <div class="input-group input-group-sm mb-2">
+                            <span class="input-group-text">&#128269;</span>
+                            <input type="text" id="inventorySearchInput" class="form-control form-control-sm"
+                                   placeholder="Search by employee, plan name, line number..." />
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-hover table-sm" id="inventoryTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width:4%">#</th>
+                                        <th style="width:25%">Employee Name</th>
+                                        <th style="width:25%">Plan Name</th>
+                                        <th style="width:18%">Line Number</th>
+                                        <th style="width:18%">Plan Amount</th>
+                                        <th style="width:8%"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (var i = 0; i < Model.Inventories.Count; i++)
+                                    {
+                                        <tr>
+                                            <td class="text-center align-middle row-number">@(i + 1)</td>
+                                            <input type="hidden" name="Inventories[@i].ServiceType" value="@Model.Inventories[i].ServiceType" />
+                                            <td>
+                                                <input name="Inventories[@i].EmployeeName" value="@Model.Inventories[i].EmployeeName"
+                                                       class="form-control form-control-sm" />
+                                            </td>
+                                            <td>
+                                                <input name="Inventories[@i].PlanName" value="@Model.Inventories[i].PlanName"
+                                                       class="form-control form-control-sm" />
+                                            </td>
+                                            <td>
+                                                <input name="Inventories[@i].LineNumber" value="@Model.Inventories[i].LineNumber"
+                                                       class="form-control form-control-sm" />
+                                            </td>
+                                            <td>
+                                                <div class="input-group input-group-sm">
+                                                    <span class="input-group-text">$</span>
+                                                    <input name="Inventories[@i].PlanAmount" value="@(Model.Inventories[i].PlanAmount ?? "0.00")"
+                                                           type="number" step="0.01" class="form-control form-control-sm" />
+                                                </div>
+                                            </td>
+                                            <td class="text-center">
+                                                <button type="button" class="btn btn-sm btn-outline-danger remove-inventory-row">X</button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div id="inventoryPagination" class="d-flex justify-content-between align-items-center mt-2" style="display:none;">
+                            <span id="inventoryPageInfo" class="text-muted small"></span>
+                            <nav>
+                                <ul class="pagination pagination-sm mb-0" id="inventoryPageButtons"></ul>
+                            </nav>
+                        </div>
+                    </div>
+                    }
+
+                    </div><!-- end tab-content -->
+
+                    <div class="d-flex justify-content-between align-items-center mt-4" id="actionButtons">
+                        <div class="d-flex gap-2 flex-wrap" id="saveButtons">
+                            <button type="submit" class="btn btn-success px-4">
+                                Confirm &amp; Save
+                            </button>
+                            <a asp-action="Upload" class="btn btn-outline-secondary">
+                                Re-upload
+                            </a>
+                            <button type="button" class="btn btn-outline-primary" id="downloadCapturedTxt"
+                                    title="Download one file: tab-separated summary and charges (plus usages, inventory, extracted text)">
+                                Download .txt
+                            </button>
+                        </div>
+                        <button type="button" class="btn btn-outline-info px-4" id="feedbackToggle">
+                            Give Feedback
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Feedback panel (outside the Save form, uses its own form) -->
+                <div id="feedbackPanel" class="card border-info mt-3" style="display:none;">
+                    <div class="card-body">
+                        <h6 class="card-title text-info mb-2">Parser Feedback</h6>
+                        <p class="text-muted small mb-2">
+                            Describe what the parser got wrong. This helps improve future accuracy.
+                        </p>
+                        <form asp-action="SubmitFeedback" method="post" id="feedbackForm">
+                            @Html.AntiForgeryToken()
+
+                            <input type="hidden" asp-for="CustomerId" />
+                            <input type="hidden" asp-for="CustomerName" />
+                            <input type="hidden" asp-for="CarrierId" />
+                            <input type="hidden" asp-for="CarrierName" />
+                            <input type="hidden" asp-for="CarrierCode" />
+                            <input type="hidden" asp-for="PdfText" />
+                            <input type="hidden" asp-for="InvoiceNumber" />
+                            <input type="hidden" asp-for="CarrierAccount" />
+                            <input type="hidden" asp-for="InvoiceDate" />
+                            <input type="hidden" asp-for="InvoiceStartDate" />
+                            <input type="hidden" asp-for="InvoiceEndDate" />
+                            <input type="hidden" asp-for="InvoiceDueDate" />
+                            <input type="hidden" asp-for="BeginningBalance" />
+                            <input type="hidden" asp-for="Payment" />
+                            <input type="hidden" asp-for="PreviousAdjustments" />
+                            <input type="hidden" asp-for="CurrentAdjustments" />
+                            <input type="hidden" asp-for="CurrentCharges" />
+                            <input type="hidden" asp-for="CurrentTax" />
+                            <input type="hidden" asp-for="EndingBalance" />
+                            <input type="hidden" asp-for="Orig_InvoiceNumber" />
+                            <input type="hidden" asp-for="Orig_CarrierAccount" />
+                            <input type="hidden" asp-for="Orig_InvoiceDate" />
+                            <input type="hidden" asp-for="Orig_InvoiceStartDate" />
+                            <input type="hidden" asp-for="Orig_InvoiceEndDate" />
+                            <input type="hidden" asp-for="Orig_InvoiceDueDate" />
+                            <input type="hidden" asp-for="Orig_BeginningBalance" />
+                            <input type="hidden" asp-for="Orig_Payment" />
+                            <input type="hidden" asp-for="Orig_PreviousAdjustments" />
+                            <input type="hidden" asp-for="Orig_CurrentAdjustments" />
+                            <input type="hidden" asp-for="Orig_CurrentCharges" />
+                            <input type="hidden" asp-for="Orig_CurrentTax" />
+                            <input type="hidden" asp-for="Orig_EndingBalance" />
+                            <input type="hidden" asp-for="Orig_ChargeCount" />
+                            <input type="hidden" asp-for="OriginalChargesJson" />
+
+                            <textarea name="feedbackText" class="form-control mb-2" rows="4"
+                                      placeholder="e.g. Payment amount should be 500.00 not 450.00. Charge line 3 has extra text in description. Due date is missing from this carrier's invoices."
+                                      required></textarea>
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-info">
+                                    Submit Feedback
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="feedbackCancel">
+                                    Cancel
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                @if (TempData["FeedbackSuccess"] != null)
+                {
+                    <div class="alert alert-success alert-dismissible fade show mt-3" role="alert">
+                        @TempData["FeedbackSuccess"]
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function () {
+                            var saveButtons = document.getElementById('saveButtons');
+                            if (saveButtons) saveButtons.style.display = 'none';
+                        });
+                    </script>
+                }
+                @if (TempData["ErrorMessage"] != null)
+                {
+                    <div class="alert alert-danger alert-dismissible fade show mt-3" role="alert">
+                        @TempData["ErrorMessage"]
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading overlay -->
+<div id="loadingOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.85); z-index:9999;">
+    <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center;">
+        <div class="spinner-border text-primary" role="status" style="width:3rem; height:3rem;">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p id="loadingMessage" class="mt-3 fw-semibold text-muted fs-6">Please wait...</p>
+    </div>
+</div>
+
+@section Scripts {
+    <style>
+        .badge-status {
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+        .tracked-field.field-changed { border-color: #ffc107; background-color: #fff8e1; }
+        .tracked-field.field-unchanged { border-color: #198754; }
+        tr.filter-hidden { display: none !important; }
+        tr.tab-hidden { display: none !important; }
+        .search-highlight { background-color: #fff3cd; font-weight: 600; }
+        tr[data-auto="true"] .charge-desc.field-changed { border-color: #ffc107; background-color: #fff8e1; }
+        tr[data-auto="true"] .charge-desc.field-unchanged { border-color: #198754; }
+        tr[data-auto="true"] .charge-amount.field-changed { border-color: #ffc107; background-color: #fff8e1; }
+        tr[data-auto="true"] .charge-amount.field-unchanged { border-color: #198754; }
+        tr.group-header-row { background-color: #e9ecef; cursor: pointer; user-select: none; }
+        tr.group-header-row td { font-weight: 600; padding: 6px 10px; border-bottom: 2px solid #ced4da; }
+        tr.group-header-row .group-toggle { display: inline-block; width: 18px; transition: transform 0.2s; }
+        tr.group-header-row.collapsed .group-toggle { transform: rotate(-90deg); }
+        tr.group-hidden { display: none !important; }
+    </style>
+    <script>
+        var PAGE_SIZE = 15;
+        var currentPage = 1;
+        var showAll = false;
+
+        function renderPage() {
+            var rows = getChargeRows();
+            var totalRows = rows.length;
+            var totalPages = Math.ceil(totalRows / PAGE_SIZE);
+            var pagination = document.getElementById('chargePagination');
+            var pageInfo = document.getElementById('pageInfo');
+            var pageButtons = document.getElementById('pageButtons');
+
+            var searchTerm = (document.getElementById('chargeSearchInput').value || '').trim();
+            var isSearchActive = searchTerm.length > 0;
+
+            if (isSearchActive || totalRows <= PAGE_SIZE) {
+                rows.forEach(function (r) { r.style.display = ''; });
+                pagination.style.display = 'none';
+                return;
+            }
+
+            pagination.style.removeProperty('display');
+
+            if (showAll) {
+                rows.forEach(function (r) { r.style.display = ''; });
+                pageInfo.textContent = 'Showing all ' + totalRows + ' charges';
+                pageButtons.innerHTML = '';
+                return;
+            }
+
+            if (currentPage > totalPages) currentPage = totalPages;
+            if (currentPage < 1) currentPage = 1;
+            var start = (currentPage - 1) * PAGE_SIZE;
+            var end = Math.min(start + PAGE_SIZE, totalRows);
+
+            rows.forEach(function (r, i) {
+                r.style.display = (i >= start && i < end) ? '' : 'none';
+            });
+
+            pageInfo.textContent = 'Showing ' + (start + 1) + '-' + end + ' of ' + totalRows + ' charges';
+
+            pageButtons.innerHTML = '';
+            var prevLi = document.createElement('li');
+            prevLi.className = 'page-item' + (currentPage <= 1 ? ' disabled' : '');
+            prevLi.innerHTML = '<a class="page-link" href="#">&laquo;</a>';
+            prevLi.addEventListener('click', function (e) { e.preventDefault(); if (currentPage > 1) { currentPage--; renderPage(); } });
+            pageButtons.appendChild(prevLi);
+
+            var maxVisible = 7;
+            var startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+            var endPage = Math.min(totalPages, startPage + maxVisible - 1);
+            if (endPage - startPage < maxVisible - 1) startPage = Math.max(1, endPage - maxVisible + 1);
+
+            for (var p = startPage; p <= endPage; p++) {
+                (function (pg) {
+                    var li = document.createElement('li');
+                    li.className = 'page-item' + (pg === currentPage ? ' active' : '');
+                    li.innerHTML = '<a class="page-link" href="#">' + pg + '</a>';
+                    li.addEventListener('click', function (e) { e.preventDefault(); currentPage = pg; renderPage(); });
+                    pageButtons.appendChild(li);
+                })(p);
+            }
+
+            var nextLi = document.createElement('li');
+            nextLi.className = 'page-item' + (currentPage >= totalPages ? ' disabled' : '');
+            nextLi.innerHTML = '<a class="page-link" href="#">&raquo;</a>';
+            nextLi.addEventListener('click', function (e) { e.preventDefault(); if (currentPage < totalPages) { currentPage++; renderPage(); } });
+            pageButtons.appendChild(nextLi);
+        }
+
+        document.getElementById('toggleAllRows').addEventListener('click', function () {
+            showAll = !showAll;
+            this.textContent = showAll ? 'Paginate' : 'Show All';
+            renderPage();
+        });
+
+        function updateTotal() {
+            var total = 0;
+            document.querySelectorAll('#chargesTable tbody tr:not(.filter-hidden):not(.group-header-row) .charge-amount').forEach(function (el) {
+                var val = parseFloat((el.value || '0').replace(/[\$,]/g, ''));
+                if (!isNaN(val)) total += val;
+            });
+            document.getElementById('chargeTotal').value = total.toFixed(2);
+            validateChargeTotals();
+        }
+
+        function validateChargeTotals() {
+            var banner = document.getElementById('chargeMismatchBanner');
+            var icon = document.getElementById('mismatchIcon');
+            var msg = document.getElementById('mismatchMessage');
+            var detail = document.getElementById('mismatchDetail');
+
+            var chargeTotal = parseFloat((document.getElementById('chargeTotal').value || '0').replace(/[\$,]/g, '')) || 0;
+
+            var currChgInput = document.querySelector('[name="CurrentCharges"]');
+            var currTaxInput = document.querySelector('[name="CurrentTax"]');
+            var currChg = parseFloat((currChgInput ? currChgInput.value : '0').replace(/[\$,]/g, '')) || 0;
+            var currTax = parseFloat((currTaxInput ? currTaxInput.value : '0').replace(/[\$,]/g, '')) || 0;
+
+            var expectedTotal = currChg + currTax;
+
+            if (chargeTotal === 0 && expectedTotal === 0) {
+                banner.style.display = 'none';
+                return;
+            }
+
+            var diff = Math.abs(chargeTotal - expectedTotal);
+            var tolerance = 0.02;
+
+            banner.style.removeProperty('display');
+            banner.classList.remove('alert-success', 'alert-warning', 'alert-danger');
+
+            if (diff <= tolerance) {
+                banner.classList.add('alert-success');
+                icon.textContent = '\u2713';
+                msg.textContent = ' Charges verified \u2014 line item total ($' + chargeTotal.toFixed(2) + ') matches summary.';
+                detail.textContent = '';
+            } else {
+                var pctOff = expectedTotal > 0 ? Math.round((diff / expectedTotal) * 100) : 100;
+                var direction = chargeTotal < expectedTotal ? 'less' : 'more';
+                var hint = chargeTotal < expectedTotal
+                    ? 'We may have missed capturing some charges from the invoice.'
+                    : 'We may have captured extra charges that don\'t belong to this section.';
+
+                if (pctOff > 20) {
+                    banner.classList.add('alert-danger');
+                    icon.textContent = '\u2716';
+                } else {
+                    banner.classList.add('alert-warning');
+                    icon.textContent = '\u26A0';
+                }
+
+                msg.innerHTML = ' Charge total (<strong>$' + chargeTotal.toFixed(2) + '</strong>) is <strong>$' +
+                    diff.toFixed(2) + ' ' + direction + '</strong> than Current Charges + Taxes (<strong>$' +
+                    expectedTotal.toFixed(2) + '</strong>). ' + hint +
+                    ' <em>If you notice any discrepancies, please use the <strong>Give Feedback</strong> button to let us know so we can improve.</em>';
+                detail.textContent = 'Current Charges: $' + currChg.toFixed(2) +
+                    (currTax > 0 ? ' + Taxes: $' + currTax.toFixed(2) : '') +
+                    ' = $' + expectedTotal.toFixed(2);
+            }
+        }
+
+        function applySearchAndFilters() {
+            var rows = Array.from(document.querySelectorAll('#chargesTable tbody tr'));
+            var visibleCount = 0;
+            var searchInput = document.getElementById('chargeSearchInput');
+            var clearBtn = document.getElementById('clearSearch');
+            var resultInfo = document.getElementById('searchResultInfo');
+
+            var term = (searchInput.value || '').trim().toLowerCase();
+            clearBtn.style.display = term ? '' : 'none';
+
+            rows.forEach(function (row) {
+                if (!term) {
+                    row.classList.remove('filter-hidden');
+                    visibleCount++;
+                    return;
+                }
+
+                var descInput = row.querySelector('.charge-desc');
+                var inputs = row.querySelectorAll('input.form-control-sm');
+                var lineInput = inputs.length >= 3 ? inputs[2] : null;
+                var locationInput = inputs.length >= 4 ? inputs[3] : null;
+
+                var desc = descInput ? descInput.value.toLowerCase() : '';
+                var line = lineInput ? lineInput.value.toLowerCase() : '';
+                var location = locationInput ? locationInput.value.toLowerCase() : '';
+
+                if (desc.indexOf(term) >= 0 || line.indexOf(term) >= 0 || location.indexOf(term) >= 0) {
+                    row.classList.remove('filter-hidden');
+                    visibleCount++;
+                } else {
+                    row.classList.add('filter-hidden');
+                }
+            });
+
+            if (term) {
+                resultInfo.style.removeProperty('display');
+                resultInfo.textContent = 'Showing ' + visibleCount + ' of ' + rows.length + ' charges';
+            } else {
+                resultInfo.style.display = 'none';
+            }
+
+            currentPage = 1;
+            updateTotal();
+            if (activeGroupField !== 'none') {
+                applyGrouping();
+            } else {
+                renderPage();
+            }
+        }
+
+        function getChargeRows() {
+            return Array.from(document.querySelectorAll('#chargesTable tbody tr:not(.filter-hidden):not(.group-header-row)'));
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            var trackedFields = document.querySelectorAll('.tracked-field');
+            var banner = document.getElementById('accuracyBanner');
+            var pctEl = document.getElementById('accuracyPercent');
+            var barEl = document.getElementById('accuracyBar');
+            var detailEl = document.getElementById('accuracyDetail');
+
+            function normalize(val) {
+                return (val || '').replace(/[\$,\s]/g, '').toLowerCase();
+            }
+
+            function updateAccuracy() {
+                var autoDetected = 0, correct = 0, changed = 0;
+
+                trackedFields.forEach(function (el) {
+                    var orig = el.getAttribute('data-original') || '';
+                    if (!orig) return;
+                    autoDetected++;
+                    if (normalize(el.value) === normalize(orig)) {
+                        correct++;
+                        el.classList.add('field-unchanged');
+                        el.classList.remove('field-changed');
+                    } else {
+                        changed++;
+                        el.classList.add('field-changed');
+                        el.classList.remove('field-unchanged');
+                    }
+                });
+
+                document.querySelectorAll('#chargesTable tbody tr[data-auto="true"]').forEach(function (row) {
+                    var origDesc = row.getAttribute('data-orig-desc') || '';
+                    var origAmt = row.getAttribute('data-orig-amt') || '';
+                    var descInput = row.querySelector('.charge-desc');
+                    var amtInput = row.querySelector('.charge-amount');
+
+                    if (origDesc) {
+                        autoDetected++;
+                        if (normalize(descInput.value) === normalize(origDesc)) {
+                            correct++;
+                            descInput.classList.add('field-unchanged');
+                            descInput.classList.remove('field-changed');
+                        } else {
+                            changed++;
+                            descInput.classList.add('field-changed');
+                            descInput.classList.remove('field-unchanged');
+                        }
+                    }
+                    if (origAmt) {
+                        autoDetected++;
+                        if (normalize(amtInput.value) === normalize(origAmt)) {
+                            correct++;
+                            amtInput.classList.add('field-unchanged');
+                            amtInput.classList.remove('field-changed');
+                        } else {
+                            changed++;
+                            amtInput.classList.add('field-changed');
+                            amtInput.classList.remove('field-unchanged');
+                        }
+                    }
+                });
+
+                if (autoDetected > 0) {
+                    var pct = Math.round((correct / autoDetected) * 100);
+                    banner.style.removeProperty('display');
+                    banner.classList.remove('alert-info', 'alert-success', 'alert-warning', 'alert-danger');
+                    if (pct >= 80) banner.classList.add('alert-success');
+                    else if (pct >= 50) banner.classList.add('alert-warning');
+                    else banner.classList.add('alert-danger');
+                    pctEl.textContent = pct + '%';
+                    barEl.style.width = pct + '%';
+                    barEl.className = 'progress-bar ' + (pct >= 80 ? 'bg-success' : pct >= 50 ? 'bg-warning' : 'bg-danger');
+                    detailEl.textContent = correct + ' of ' + autoDetected + ' fields correct' +
+                        (changed > 0 ? ', ' + changed + ' corrected' : '');
+                } else {
+                    banner.style.display = 'none';
+                }
+            }
+
+            trackedFields.forEach(function (el) { el.addEventListener('input', updateAccuracy); });
+
+            document.querySelector('#chargesTable').addEventListener('input', function (e) {
+                updateTotal();
+                updateAccuracy();
+            });
+
+            // Re-validate when summary fields change
+            var summaryFields = document.querySelectorAll('[name="CurrentCharges"], [name="CurrentTax"]');
+            summaryFields.forEach(function (el) {
+                el.addEventListener('input', validateChargeTotals);
+            });
+
+            // Search bar events
+            document.getElementById('chargeSearchInput').addEventListener('input', applySearchAndFilters);
+            document.getElementById('clearSearch').addEventListener('click', function () {
+                document.getElementById('chargeSearchInput').value = '';
+                applySearchAndFilters();
+            });
+
+            updateTotal();
+            updateAccuracy();
+            renderPage();
+        });
+
+        document.getElementById('addChargeRow').addEventListener('click', function () {
+            var tbody = document.querySelector('#chargesTable tbody');
+            var rowCount = tbody.rows.length;
+            var row = document.createElement('tr');
+            row.setAttribute('data-auto', 'false');
+            row.innerHTML =
+                '<td class="text-center align-middle row-number">' + (rowCount + 1) + '</td>' +
+                '<td class="text-center align-middle"><span class="badge bg-info badge-status">New</span></td>' +
+                '<td><input name="Charges[' + rowCount + '].ChargeDescription" class="form-control form-control-sm charge-desc" /></td>' +
+                '<td><div class="input-group input-group-sm"><span class="input-group-text">$</span>' +
+                '<input name="Charges[' + rowCount + '].Amount" type="number" step="0.01" class="form-control form-control-sm charge-amount" /></div></td>' +
+                '<td><input name="Charges[' + rowCount + '].Line" class="form-control form-control-sm" /></td>' +
+                '<td><input name="Charges[' + rowCount + '].Location" class="form-control form-control-sm" /></td>' +
+                '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger remove-row">X</button></td>';
+            tbody.appendChild(row);
+            currentPage = Math.ceil(tbody.rows.length / PAGE_SIZE);
+            if (activeGroupField !== 'none') applyGrouping(); else renderPage();
+        });
+
+        document.querySelector('#chargesTable').addEventListener('click', function (e) {
+            if (e.target.classList.contains('remove-row')) {
+                e.target.closest('tr').remove();
+                reindexRows();
+                updateTotal();
+                if (activeGroupField !== 'none') applyGrouping(); else renderPage();
+            }
+        });
+
+        function reindexRows() {
+            var rows = Array.from(document.querySelectorAll('#chargesTable tbody tr:not(.group-header-row)'));
+            rows.forEach(function (row, idx) {
+                row.querySelector('.row-number').textContent = idx + 1;
+                var inputs = row.querySelectorAll('input');
+                inputs.forEach(function (input) {
+                    var name = input.getAttribute('name');
+                    if (name) input.setAttribute('name', name.replace(/Charges\[\d+\]/, 'Charges[' + idx + ']'));
+                });
+            });
+        }
+
+        // --- Generic reindex for Usage / Inventory tables ---
+        function reindexTable(tableId, prefix) {
+            var rows = document.querySelectorAll('#' + tableId + ' tbody tr');
+            rows.forEach(function (row, idx) {
+                var rn = row.querySelector('.row-number');
+                if (rn) rn.textContent = idx + 1;
+                row.querySelectorAll('input, select').forEach(function (el) {
+                    var name = el.getAttribute('name');
+                    if (name) el.setAttribute('name', name.replace(new RegExp(prefix + '\\[\\d+\\]'), prefix + '[' + idx + ']'));
+                });
+            });
+        }
+
+        // --- Add Usage Row ---
+        document.getElementById('addUsageRow')?.addEventListener('click', function () {
+            var tbody = document.querySelector('#usageTable tbody');
+            var idx = tbody.rows.length;
+            var row = document.createElement('tr');
+            row.innerHTML =
+                '<td class="text-center align-middle row-number">' + (idx + 1) + '</td>' +
+                '<input type="hidden" name="Usages[' + idx + '].EmployeeName" />' +
+                '<input type="hidden" name="Usages[' + idx + '].UsageAmount" />' +
+                '<td><input name="Usages[' + idx + '].LineNumber" class="form-control form-control-sm" /></td>' +
+                '<td><input name="Usages[' + idx + '].UsocName" class="form-control form-control-sm" /></td>' +
+                '<td><select name="Usages[' + idx + '].UsageType" class="form-select form-select-sm">' +
+                '<option value="V">Voice</option><option value="D">Data</option>' +
+                '<option value="T">Text</option><option value="R">Roaming</option></select></td>' +
+                '<td><input name="Usages[' + idx + '].UsageLimit" class="form-control form-control-sm" /></td>' +
+                '<td><div class="input-group input-group-sm"><span class="input-group-text">$</span>' +
+                '<input name="Usages[' + idx + '].Charge" type="number" step="0.01" class="form-control form-control-sm" />' +
+                '</div></td>' +
+                '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger remove-usage-row">X</button></td>';
+            tbody.appendChild(row);
+        });
+
+        // --- Remove Usage Row (delegated) ---
+        document.querySelector('#usageTable')?.addEventListener('click', function (e) {
+            if (e.target.classList.contains('remove-usage-row')) {
+                e.target.closest('tr').remove();
+                reindexTable('usageTable', 'Usages');
+            }
+        });
+
+        // --- Add Inventory Row ---
+        document.getElementById('addInventoryRow')?.addEventListener('click', function () {
+            var tbody = document.querySelector('#inventoryTable tbody');
+            var idx = tbody.rows.length;
+            var row = document.createElement('tr');
+            row.innerHTML =
+                '<td class="text-center align-middle row-number">' + (idx + 1) + '</td>' +
+                '<input type="hidden" name="Inventories[' + idx + '].ServiceType" />' +
+                '<td><input name="Inventories[' + idx + '].EmployeeName" class="form-control form-control-sm" /></td>' +
+                '<td><input name="Inventories[' + idx + '].PlanName" class="form-control form-control-sm" /></td>' +
+                '<td><input name="Inventories[' + idx + '].LineNumber" class="form-control form-control-sm" /></td>' +
+                '<td><div class="input-group input-group-sm"><span class="input-group-text">$</span>' +
+                '<input name="Inventories[' + idx + '].PlanAmount" type="number" step="0.01" value="0.00" class="form-control form-control-sm" />' +
+                '</div></td>' +
+                '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger remove-inventory-row">X</button></td>';
+            tbody.appendChild(row);
+        });
+
+        // --- Remove Inventory Row (delegated) ---
+        document.querySelector('#inventoryTable')?.addEventListener('click', function (e) {
+            if (e.target.classList.contains('remove-inventory-row')) {
+                e.target.closest('tr').remove();
+                reindexTable('inventoryTable', 'Inventories');
+            }
+        });
+
+        // --- Usage & Inventory tab search/pagination ---
+        function setupTabGrid(tableId, searchInputId, paginationId, pageInfoId, pageButtonsId) {
+            var searchInput = document.getElementById(searchInputId);
+            var pagination = document.getElementById(paginationId);
+            if (!searchInput || !pagination) return;
+
+            var tabPageSize = 15;
+            var tabCurrentPage = 1;
+
+            function getRows() {
+                return Array.from(document.querySelectorAll('#' + tableId + ' tbody tr:not(.tab-hidden)'));
+            }
+
+            function renderTabPage() {
+                var rows = getRows();
+                var total = rows.length;
+                var totalPages = Math.ceil(total / tabPageSize);
+                var pageInfoEl = document.getElementById(pageInfoId);
+                var pageBtnsEl = document.getElementById(pageButtonsId);
+
+                if (total <= tabPageSize) {
+                    rows.forEach(function(r) { r.style.display = ''; });
+                    pagination.style.display = 'none';
+                    return;
+                }
+
+                pagination.style.removeProperty('display');
+                if (tabCurrentPage > totalPages) tabCurrentPage = totalPages;
+                if (tabCurrentPage < 1) tabCurrentPage = 1;
+                var start = (tabCurrentPage - 1) * tabPageSize;
+                var end = Math.min(start + tabPageSize, total);
+
+                rows.forEach(function(r, i) {
+                    r.style.display = (i >= start && i < end) ? '' : 'none';
+                });
+
+                pageInfoEl.textContent = 'Showing ' + (start + 1) + '-' + end + ' of ' + total;
+                pageBtnsEl.innerHTML = '';
+
+                var prevLi = document.createElement('li');
+                prevLi.className = 'page-item' + (tabCurrentPage <= 1 ? ' disabled' : '');
+                prevLi.innerHTML = '<a class="page-link" href="#">&laquo;</a>';
+                prevLi.addEventListener('click', function(e) { e.preventDefault(); if (tabCurrentPage > 1) { tabCurrentPage--; renderTabPage(); } });
+                pageBtnsEl.appendChild(prevLi);
+
+                for (var p = 1; p <= totalPages; p++) {
+                    (function(pg) {
+                        var li = document.createElement('li');
+                        li.className = 'page-item' + (pg === tabCurrentPage ? ' active' : '');
+                        li.innerHTML = '<a class="page-link" href="#">' + pg + '</a>';
+                        li.addEventListener('click', function(e) { e.preventDefault(); tabCurrentPage = pg; renderTabPage(); });
+                        pageBtnsEl.appendChild(li);
+                    })(p);
+                }
+
+                var nextLi = document.createElement('li');
+                nextLi.className = 'page-item' + (tabCurrentPage >= totalPages ? ' disabled' : '');
+                nextLi.innerHTML = '<a class="page-link" href="#">&raquo;</a>';
+                nextLi.addEventListener('click', function(e) { e.preventDefault(); if (tabCurrentPage < totalPages) { tabCurrentPage++; renderTabPage(); } });
+                pageBtnsEl.appendChild(nextLi);
+            }
+
+            searchInput.addEventListener('input', function() {
+                var term = (this.value || '').trim().toLowerCase();
+                var allRows = Array.from(document.querySelectorAll('#' + tableId + ' tbody tr'));
+                allRows.forEach(function(row) {
+                    if (!term) {
+                        row.classList.remove('tab-hidden');
+                        return;
+                    }
+                    var searchText = '';
+                    row.querySelectorAll('input, select').forEach(function(el) {
+                        searchText += ' ' + (el.value || '');
+                    });
+                    searchText += ' ' + (row.textContent || '');
+                    searchText = searchText.toLowerCase();
+                    if (searchText.indexOf(term) >= 0) {
+                        row.classList.remove('tab-hidden');
+                    } else {
+                        row.classList.add('tab-hidden');
+                    }
+                });
+                tabCurrentPage = 1;
+                renderTabPage();
+            });
+
+            renderTabPage();
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            setupTabGrid('usageTable', 'usageSearchInput', 'usagePagination', 'usagePageInfo', 'usagePageButtons');
+            setupTabGrid('inventoryTable', 'inventorySearchInput', 'inventoryPagination', 'inventoryPageInfo', 'inventoryPageButtons');
+        });
+
+        // --- Feedback panel toggle ---
+        document.getElementById('feedbackToggle').addEventListener('click', function () {
+            var panel = document.getElementById('feedbackPanel');
+            var saveButtons = document.getElementById('saveButtons');
+            var isHidden = panel.style.display === 'none';
+            panel.style.display = isHidden ? 'block' : 'none';
+            saveButtons.style.display = isHidden ? 'none' : '';
+            if (isHidden) {
+                panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                panel.querySelector('textarea').focus();
+            }
+        });
+
+        document.getElementById('feedbackCancel').addEventListener('click', function () {
+            var panel = document.getElementById('feedbackPanel');
+            var saveButtons = document.getElementById('saveButtons');
+            panel.style.display = 'none';
+            saveButtons.style.display = '';
+            panel.querySelector('textarea').value = '';
+        });
+
+        function showLoadingOverlay(message) {
+            document.getElementById('loadingMessage').textContent = message;
+            document.getElementById('loadingOverlay').style.display = 'block';
+            document.querySelectorAll('button[type="submit"], a.btn').forEach(function (el) {
+                el.setAttribute('disabled', 'disabled');
+                el.style.pointerEvents = 'none';
+            });
+        }
+
+        // Clean up group headers and reindex before form submit
+        document.querySelector('form[action*="Save"]').addEventListener('submit', function () {
+            clearGroupHeaders();
+            reindexRows();
+            showLoadingOverlay('Please wait... we are saving your invoice details.');
+        });
+
+        // --- Charge Grouping ---
+        var activeGroupField = 'none';
+        var collapsedGroups = {};
+
+        function getFieldValue(row, field) {
+            var inputs = row.querySelectorAll('input.form-control-sm');
+            if (field === 'line') return inputs.length >= 3 ? (inputs[2].value || '').trim() : '';
+            if (field === 'location') return inputs.length >= 4 ? (inputs[3].value || '').trim() : '';
+            return '';
+        }
+
+        function clearGroupHeaders() {
+            document.querySelectorAll('#chargesTable tbody tr.group-header-row').forEach(function(r) { r.remove(); });
+            document.querySelectorAll('#chargesTable tbody tr').forEach(function(r) {
+                r.classList.remove('group-hidden');
+                r.style.display = '';
+            });
+        }
+
+        function applyGrouping() {
+            clearGroupHeaders();
+            if (activeGroupField === 'none') {
+                renderPage();
+                return;
+            }
+
+            var tbody = document.querySelector('#chargesTable tbody');
+            var dataRows = Array.from(tbody.querySelectorAll('tr:not(.group-header-row):not(.filter-hidden)'));
+
+            var groups = {};
+            var groupOrder = [];
+            dataRows.forEach(function(row) {
+                var val = getFieldValue(row, activeGroupField) || '(No ' + (activeGroupField === 'line' ? 'Line' : 'Location') + ')';
+                if (!groups[val]) {
+                    groups[val] = [];
+                    groupOrder.push(val);
+                }
+                groups[val].push(row);
+            });
+
+            var sortedRows = [];
+            groupOrder.forEach(function(groupKey) {
+                sortedRows.push({ type: 'header', key: groupKey, rows: groups[groupKey] });
+                groups[groupKey].forEach(function(r) { sortedRows.push({ type: 'data', row: r }); });
+            });
+
+            sortedRows.forEach(function(item) {
+                if (item.type === 'header') {
+                    var headerRow = document.createElement('tr');
+                    headerRow.className = 'group-header-row';
+                    if (collapsedGroups[item.key]) headerRow.classList.add('collapsed');
+                    headerRow.setAttribute('data-group-key', item.key);
+
+                    var groupTotal = 0;
+                    item.rows.forEach(function(r) {
+                        var amtInput = r.querySelector('.charge-amount');
+                        var val = parseFloat((amtInput ? amtInput.value : '0').replace(/[\$,]/g, ''));
+                        if (!isNaN(val)) groupTotal += val;
+                    });
+
+                    var label = activeGroupField === 'line' ? 'Line' : 'Location';
+                    headerRow.innerHTML =
+                        '<td colspan="4">' +
+                            '<span class="group-toggle">&#9660;</span> ' +
+                            '<span class="text-primary">' + label + ':</span> ' +
+                            item.key +
+                            ' <span class="badge bg-primary ms-2">' + item.rows.length + ' charge' + (item.rows.length !== 1 ? 's' : '') + '</span>' +
+                        '</td>' +
+                        '<td colspan="3" class="text-end">' +
+                            'Subtotal: <strong>$' + groupTotal.toFixed(2) + '</strong>' +
+                        '</td>';
+
+                    headerRow.addEventListener('click', function() {
+                        var key = this.getAttribute('data-group-key');
+                        collapsedGroups[key] = !collapsedGroups[key];
+                        this.classList.toggle('collapsed');
+                        toggleGroupRows(key);
+                    });
+
+                    tbody.appendChild(headerRow);
+                } else {
+                    tbody.appendChild(item.row);
+                    if (collapsedGroups[getGroupKeyForRow(item.row)])
+                        item.row.classList.add('group-hidden');
+                    else
+                        item.row.classList.remove('group-hidden');
+                }
+            });
+
+            showAll = true;
+            document.getElementById('toggleAllRows').textContent = 'Paginate';
+            var pagination = document.getElementById('chargePagination');
+            pagination.style.display = 'none';
+        }
+
+        function getGroupKeyForRow(row) {
+            var prev = row.previousElementSibling;
+            while (prev) {
+                if (prev.classList.contains('group-header-row'))
+                    return prev.getAttribute('data-group-key');
+                prev = prev.previousElementSibling;
+            }
+            return '';
+        }
+
+        function toggleGroupRows(groupKey) {
+            var tbody = document.querySelector('#chargesTable tbody');
+            var rows = Array.from(tbody.querySelectorAll('tr'));
+            var inGroup = false;
+            rows.forEach(function(row) {
+                if (row.classList.contains('group-header-row')) {
+                    inGroup = row.getAttribute('data-group-key') === groupKey;
+                    return;
+                }
+                if (inGroup) {
+                    if (collapsedGroups[groupKey])
+                        row.classList.add('group-hidden');
+                    else
+                        row.classList.remove('group-hidden');
+                }
+            });
+        }
+
+        document.getElementById('chargeGroupBy').addEventListener('change', function() {
+            activeGroupField = this.value;
+            collapsedGroups = {};
+            applyGrouping();
+        });
+
+        (function () {
+            function formField(form, name) {
+                var el = form.querySelector('[name="' + name.replace(/"/g, '\\"') + '"]');
+                return el ? String(el.value || '').trim() : '';
+            }
+
+            function collectChargeIndices(form) {
+                var set = {};
+                form.querySelectorAll('[name^="Charges["]').forEach(function (el) {
+                    var m = el.name && el.name.match(/^Charges\[(\d+)\]\./);
+                    if (m) set[m[1]] = true;
+                });
+                return Object.keys(set).map(Number).sort(function (a, b) { return a - b; });
+            }
+
+            function collectIndexedPrefix(form, prefix) {
+                var set = {};
+                var esc = prefix.replace(/\\/g, '\\\\');
+                var re = new RegExp('^' + esc + '\\[(\\d+)\\]\\.');
+                form.querySelectorAll('[name^="' + prefix + '["]').forEach(function (el) {
+                    var m = el.name && el.name.match(re);
+                    if (m) set[m[1]] = true;
+                });
+                return Object.keys(set).map(Number).sort(function (a, b) { return a - b; });
+            }
+
+            /** Safe for tab-separated sections: no tabs or line breaks inside cells. */
+            function escapeTsv(s) {
+                if (s == null || s === undefined) return '';
+                return String(s).replace(/[\t\r\n\u00A0]+/g, ' ').trim();
+            }
+
+            function tsvLine(cells) {
+                return cells.map(escapeTsv).join('\t');
+            }
+
+            document.getElementById('downloadCapturedTxt').addEventListener('click', function () {
+                var form = document.querySelector('form[action*="Save"]');
+                if (!form) return;
+
+                var lines = [];
+                lines.push('Invoice Parser — captured review data (tab-separated tables; open in Excel)');
+                lines.push('Exported: ' + new Date().toISOString());
+                lines.push('');
+
+                // --- Single summary table: customer, identifiers, dates, financials ---
+                lines.push('=== SUMMARY (columns: Field, then Value; tab-separated) ===');
+                lines.push(tsvLine(['Field', 'Value']));
+                var summaryRows = [
+                    ['Customer', formField(form, 'CustomerName')],
+                    ['Carrier', formField(form, 'CarrierName')],
+                    ['Carrier code', formField(form, 'CarrierCode')],
+                    ['Invoice number', formField(form, 'InvoiceNumber')],
+                    ['Account number', formField(form, 'CarrierAccount')],
+                    ['Invoice date', formField(form, 'InvoiceDate')],
+                    ['Statement start', formField(form, 'InvoiceStartDate')],
+                    ['Statement end', formField(form, 'InvoiceEndDate')],
+                    ['Due date', formField(form, 'InvoiceDueDate')],
+                    ['Previous balance', formField(form, 'BeginningBalance')],
+                    ['Payments', formField(form, 'Payment')],
+                    ['Previous adjustments', formField(form, 'PreviousAdjustments')],
+                    ['Current adjustments', formField(form, 'CurrentAdjustments')],
+                    ['Current charges', formField(form, 'CurrentCharges')],
+                    ['Taxes & surcharges', formField(form, 'CurrentTax')],
+                    ['Balance due', formField(form, 'EndingBalance')]
+                ];
+                summaryRows.forEach(function (r) {
+                    lines.push(tsvLine(r));
+                });
+                lines.push('');
+
+                var pySrc = formField(form, 'PythonSource');
+                if (pySrc || formField(form, 'PythonParseId') || formField(form, 'PythonVendorHint')) {
+                    lines.push('=== PYTHON PARSER (columns: Field, Value; tab-separated) ===');
+                    lines.push(tsvLine(['Field', 'Value']));
+                    lines.push(tsvLine(['Parse id', formField(form, 'PythonParseId')]));
+                    lines.push(tsvLine(['Source', pySrc]));
+                    lines.push(tsvLine(['Vendor hint', formField(form, 'PythonVendorHint')]));
+                    lines.push('');
+                }
+
+                // --- Charges: one header row + one data row per line item ---
+                lines.push('=== CHARGES (columns: Description, Amount, Line, Location; tab-separated) ===');
+                lines.push(tsvLine(['Description', 'Amount', 'Line', 'Location']));
+                var cIdx = collectChargeIndices(form);
+                if (cIdx.length === 0) {
+                    lines.push(tsvLine(['', '', '', '']));
+                } else {
+                    cIdx.forEach(function (i) {
+                        lines.push(tsvLine([
+                            formField(form, 'Charges[' + i + '].ChargeDescription'),
+                            formField(form, 'Charges[' + i + '].Amount'),
+                            formField(form, 'Charges[' + i + '].Line'),
+                            formField(form, 'Charges[' + i + '].Location')
+                        ]));
+                    });
+                }
+                lines.push('');
+
+                lines.push('=== USAGE (columns: Line, Description, Type, Limit, Charge; tab-separated) ===');
+                lines.push(tsvLine(['Line', 'Description', 'Type', 'Limit', 'Charge']));
+                var uIdx = collectIndexedPrefix(form, 'Usages');
+                if (uIdx.length === 0) {
+                    lines.push(tsvLine(['', '', '', '', '']));
+                } else {
+                    uIdx.forEach(function (i) {
+                        lines.push(tsvLine([
+                            formField(form, 'Usages[' + i + '].LineNumber'),
+                            formField(form, 'Usages[' + i + '].UsocName'),
+                            formField(form, 'Usages[' + i + '].UsageType'),
+                            formField(form, 'Usages[' + i + '].UsageLimit'),
+                            formField(form, 'Usages[' + i + '].Charge')
+                        ]));
+                    });
+                }
+                lines.push('');
+
+                lines.push('=== INVENTORY (columns: Employee, Plan, Line, Plan amount; tab-separated) ===');
+                lines.push(tsvLine(['Employee', 'Plan', 'Line', 'Plan amount']));
+                var invIdx = collectIndexedPrefix(form, 'Inventories');
+                if (invIdx.length === 0) {
+                    lines.push(tsvLine(['', '', '', '']));
+                } else {
+                    invIdx.forEach(function (i) {
+                        lines.push(tsvLine([
+                            formField(form, 'Inventories[' + i + '].EmployeeName'),
+                            formField(form, 'Inventories[' + i + '].PlanName'),
+                            formField(form, 'Inventories[' + i + '].LineNumber'),
+                            formField(form, 'Inventories[' + i + '].PlanAmount')
+                        ]));
+                    });
+                }
+                lines.push('');
+
+                var pdfText = formField(form, 'PdfText');
+                lines.push('=== EXTRACTED PDF / OCR TEXT (not TSV; may span many lines) ===');
+                if (pdfText) {
+                    lines.push('Character count: ' + pdfText.length);
+                    lines.push(pdfText);
+                } else {
+                    lines.push('(none)');
+                }
+
+                var blob = new Blob([lines.join('\r\n')], { type: 'text/plain;charset=utf-8' });
+                var a = document.createElement('a');
+                var inv = formField(form, 'InvoiceNumber').replace(/[^\w\-]+/g, '_') || 'draft';
+                a.download = 'invoice-review-' + inv + '-' +
+                    new Date().toISOString().slice(0, 19).replace(/[:-]/g, '').replace('T', '-') + '.txt';
+                a.href = URL.createObjectURL(blob);
+                a.rel = 'noopener';
+                document.body.appendChild(a);
+                a.click();
+                URL.revokeObjectURL(a.href);
+                a.remove();
+            });
+        })();
+
+        // Sync main form field values to feedback form hidden inputs before feedback submit
+        document.getElementById('feedbackForm').addEventListener('submit', function () {
+            var mainForm = document.querySelector('form[action*="Save"]');
+            var feedbackForm = this;
+            var fieldsToSync = [
+                'InvoiceNumber', 'CarrierAccount', 'InvoiceDate', 'InvoiceStartDate',
+                'InvoiceEndDate', 'InvoiceDueDate', 'BeginningBalance', 'Payment',
+                'PreviousAdjustments', 'CurrentAdjustments', 'CurrentCharges',
+                'CurrentTax', 'EndingBalance'
+            ];
+            fieldsToSync.forEach(function (field) {
+                var src = mainForm.querySelector('[name="' + field + '"]');
+                var dst = feedbackForm.querySelector('[name="' + field + '"]');
+                if (src && dst) dst.value = src.value;
+            });
+
+            showLoadingOverlay('Please wait... we are saving your feedback to help us improve.');
+        });
+    </script>
+}

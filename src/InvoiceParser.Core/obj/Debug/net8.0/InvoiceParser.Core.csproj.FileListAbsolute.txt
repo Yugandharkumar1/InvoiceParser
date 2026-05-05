@@ -1,0 +1,12 @@
+C:\Users\ADMIN\source\repos\InvoiceParser\src\InvoiceParser.Core\bin\Debug\net8.0\InvoiceParser.Core.deps.json
+C:\Users\ADMIN\source\repos\InvoiceParser\src\InvoiceParser.Core\bin\Debug\net8.0\InvoiceParser.Core.dll
+C:\Users\ADMIN\source\repos\InvoiceParser\src\InvoiceParser.Core\bin\Debug\net8.0\InvoiceParser.Core.pdb
+C:\Users\ADMIN\source\repos\InvoiceParser\src\InvoiceParser.Core\obj\Debug\net8.0\InvoiceParser.Core.csproj.AssemblyReference.cache
+C:\Users\ADMIN\source\repos\InvoiceParser\src\InvoiceParser.Core\obj\Debug\net8.0\InvoiceParser.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\ADMIN\source\repos\InvoiceParser\src\InvoiceParser.Core\obj\Debug\net8.0\InvoiceParser.Core.AssemblyInfoInputs.cache
+C:\Users\ADMIN\source\repos\InvoiceParser\src\InvoiceParser.Core\obj\Debug\net8.0\InvoiceParser.Core.AssemblyInfo.cs
+C:\Users\ADMIN\source\repos\InvoiceParser\src\InvoiceParser.Core\obj\Debug\net8.0\InvoiceParser.Core.csproj.CoreCompileInputs.cache
+C:\Users\ADMIN\source\repos\InvoiceParser\src\InvoiceParser.Core\obj\Debug\net8.0\InvoiceParser.Core.dll
+C:\Users\ADMIN\source\repos\InvoiceParser\src\InvoiceParser.Core\obj\Debug\net8.0\refint\InvoiceParser.Core.dll
+C:\Users\ADMIN\source\repos\InvoiceParser\src\InvoiceParser.Core\obj\Debug\net8.0\InvoiceParser.Core.pdb
+C:\Users\ADMIN\source\repos\InvoiceParser\src\InvoiceParser.Core\obj\Debug\net8.0\ref\InvoiceParser.Core.dll

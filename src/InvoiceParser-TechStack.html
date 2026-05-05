@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>InvoiceParser — Tech Stack</title>
+    <style>
+        @page { margin: 20mm 18mm; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Calibri, Arial, sans-serif;
+            color: #1e1e1e;
+            line-height: 1.55;
+            padding: 40px 50px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 26px;
+            font-weight: 700;
+            color: #0b3d91;
+            border-bottom: 3px solid #0b3d91;
+            padding-bottom: 8px;
+            margin-bottom: 6px;
+        }
+        .subtitle {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 28px;
+        }
+        h2 {
+            font-size: 17px;
+            font-weight: 700;
+            color: #0b3d91;
+            margin-top: 26px;
+            margin-bottom: 8px;
+            padding-bottom: 3px;
+            border-bottom: 1px solid #d0d7e3;
+        }
+        ul {
+            padding-left: 22px;
+            margin-bottom: 4px;
+        }
+        li {
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+        li strong { color: #1a1a1a; }
+        .muted { color: #555; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+            margin-bottom: 6px;
+            font-size: 13.5px;
+        }
+        th, td {
+            text-align: left;
+            padding: 7px 10px;
+            border: 1px solid #ccd4de;
+        }
+        th {
+            background: #e8edf4;
+            font-weight: 600;
+            color: #0b3d91;
+        }
+        tr:nth-child(even) td { background: #f7f9fc; }
+        .summary-box {
+            margin-top: 26px;
+            padding: 14px 18px;
+            background: #eef3fb;
+            border-left: 4px solid #0b3d91;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .footer {
+            margin-top: 36px;
+            font-size: 11px;
+            color: #999;
+            text-align: center;
+            border-top: 1px solid #ddd;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<h1>InvoiceParser &mdash; Technology Stack</h1>
+<div class="subtitle">Project: InvoiceParser &nbsp;|&nbsp; Generated: April 10, 2026</div>
+
+<h2>Runtime &amp; Language</h2>
+<ul>
+    <li><strong>C# / .NET 7.0</strong> &mdash; all projects target <code>net7.0</code></li>
+    <li><strong>Visual Studio 2022</strong> (v17) &mdash; IDE / solution format</li>
+</ul>
+
+<h2>Architecture</h2>
+<ul>
+    <li><strong>Clean / Layered Architecture</strong> with separated concerns:</li>
+    <ul>
+        <li><strong>InvoiceParser.Core</strong> &mdash; Domain logic &amp; services</li>
+        <li><strong>InvoiceParser.Infrastructure</strong> &mdash; Data access &amp; repositories</li>
+        <li><strong>InvoiceParser.Web</strong> &mdash; Presentation layer (MVC)</li>
+        <li><strong>TestVerizon</strong> &mdash; Console test harness</li>
+    </ul>
+</ul>
+
+<h2>Web Framework</h2>
+<ul>
+    <li><strong>ASP.NET Core MVC</strong> &mdash; Controllers + Razor Views (<code>.cshtml</code>), server-rendered</li>
+</ul>
+
+<h2>Frontend / UI</h2>
+<ul>
+    <li><strong>Bootstrap 5</strong> &mdash; Responsive CSS framework</li>
+    <li><strong>jQuery</strong> &mdash; DOM manipulation &amp; AJAX</li>
+    <li><strong>Select2</strong> (v4.1.0-rc.0) &mdash; Enhanced dropdown controls with Bootstrap 5 theme</li>
+</ul>
+
+<h2>Database</h2>
+<ul>
+    <li><strong>Microsoft SQL Server</strong> &mdash; Two databases: <em>datamart</em> (primary) and <em>iPath</em> (secondary)</li>
+    <li><strong>Entity Framework Core 7</strong> &mdash; ORM for data access
+        <ul>
+            <li><code>Microsoft.EntityFrameworkCore.SqlServer</code></li>
+            <li><code>Microsoft.EntityFrameworkCore.Design</code></li>
+        </ul>
+    </li>
+</ul>
+
+<h2>AI / Machine Learning</h2>
+<ul>
+    <li><strong>OpenAI-compatible API</strong> &mdash; via custom provider (devs.ai / AppDirect) for AI-powered invoice parsing</li>
+    <li><strong>ML.NET</strong> (v3.0.1) &mdash; On-device machine learning for invoice field prediction</li>
+</ul>
+
+<h2>PDF Processing</h2>
+<ul>
+    <li><strong>PdfPig</strong> (<code>UglyToad.PdfPig</code> v1.7.0-custom-5) &mdash; PDF text extraction (custom/forked build)</li>
+</ul>
+
+<h2>Key Application Services</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Service</th>
+            <th>Purpose</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr><td>PdfTextExtractorService</td><td>Extracts raw text from uploaded PDF invoices</td></tr>
+        <tr><td>AiInvoiceParser</td><td>Sends invoice text to AI API for structured parsing</td></tr>
+        <tr><td>GenericInvoiceParser</td><td>Rule-based parsing for generic invoices</td></tr>
+        <tr><td>VerizonWirelessParser</td><td>Specialized parser for Verizon Wireless invoices</td></tr>
+        <tr><td>InvoiceMLService</td><td>ML.NET-based field prediction model</td></tr>
+        <tr><td>FeedbackAgent</td><td>AI-driven feedback / correction loop</td></tr>
+        <tr><td>ChargeValidationService</td><td>AI-powered charge validation</td></tr>
+        <tr><td>RuleLearningService</td><td>Learns parsing rules from user corrections</td></tr>
+        <tr><td>FeedbackProcessor</td><td>Processes user feedback to improve parsing accuracy</td></tr>
+    </tbody>
+</table>
+
+<div class="summary-box">
+    <strong>Summary:</strong> An ASP.NET Core 7 MVC application that parses PDF invoices using a combination of
+    rule-based parsing, ML.NET models, and LLM/AI APIs. Results are stored in SQL Server via Entity Framework Core
+    and presented through a server-rendered UI built with Bootstrap 5, jQuery, and Select2.
+</div>
+
+<div class="footer">InvoiceParser &copy; 2026 &mdash; Internal Documentation</div>
+
+</body>
+</html>

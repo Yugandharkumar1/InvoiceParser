@@ -1,0 +1,45 @@
+# Invoice Parser ML Service — override via env INVOICE_PARSER_*
+
+service:
+  host: "0.0.0.0"
+  port: 8765
+
+ocr:
+  tesseract_cmd: null
+  language: "eng"
+  cache_dir: ".cache/ocr"
+  cache_enabled: true
+
+rules:
+  fixed_confidence:
+    invoice_no: 0.72
+    date: 0.70
+    total: 0.74
+    vendor: 0.65
+
+hybrid:
+  ml_confidence_threshold: 0.55
+  prefer_agreement_boost: 0.05
+
+ml:
+  base_model: "microsoft/layoutlm-base-uncased"
+  max_length: 512
+  device: null
+  active_model_path: null
+
+training:
+  # Retrain LayoutLM after this many new feedback rows since last train (append-only dataset).
+  min_new_feedback_samples: 10
+  batch_size: 4
+  epochs: 3
+  learning_rate: 5.0e-5
+  use_gpu: true
+
+versioning:
+  models_root: "models"
+  min_accuracy_delta_to_promote: 0.005
+  regression_tolerance: 0.02
+
+feedback:
+  dataset_path: "TrainingData/feedback_dataset.json"
+  lock_path: "TrainingData/feedback_dataset.lock"

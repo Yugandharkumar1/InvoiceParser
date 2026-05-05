@@ -1,0 +1,84 @@
+@model List<InvoiceParser.Core.Entities.Invoice>
+
+@{
+    ViewData["Title"] = "Invoices";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3>Uploaded Invoices</h3>
+    <div>
+        <form asp-action="ProcessFeedback" method="post" class="d-inline">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-outline-info me-2"
+                    onclick="this.disabled=true; this.innerHTML='Processing...'; this.form.submit();">
+                Process Feedback
+            </button>
+        </form>
+        <form asp-action="TrainModel" method="post" class="d-inline">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-success me-2"
+                    onclick="this.disabled=true; this.innerHTML='Training...'; this.form.submit();">
+                Train ML Model
+            </button>
+        </form>
+        <a asp-action="Upload" class="btn btn-primary">Upload New Invoice</a>
+    </div>
+</div>
+
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show">
+        @TempData["SuccessMessage"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-warning alert-dismissible fade show">
+        @TempData["ErrorMessage"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+@if (!Model.Any())
+{
+    <div class="alert alert-info">
+        No invoices uploaded yet. <a asp-action="Upload" class="alert-link">Upload your first invoice</a>.
+    </div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-striped table-hover table-bordered">
+            <thead class="table-light">
+                <tr>
+                    <th>ID</th>
+                    <th>Invoice #</th>
+                    <th>Carrier</th>
+                    <th>Account</th>
+                    <th>Invoice Date</th>
+                    <th>Due Date</th>
+                    <th class="text-end">Balance Due</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var inv in Model)
+                {
+                    <tr>
+                        <td>@inv.Id</td>
+                        <td>@inv.InvoiceNumber</td>
+                        <td>@inv.CarrierName</td>
+                        <td>@inv.CarrierAccount</td>
+                        <td>@inv.InvoiceDate?.ToString("MM/dd/yyyy")</td>
+                        <td>@inv.InvoiceDueDate?.ToString("MM/dd/yyyy")</td>
+                        <td class="text-end">@inv.EndingBalance?.ToString("C")</td>
+                        <td>
+                            <a asp-action="Detail" asp-route-id="@inv.Id" class="btn btn-sm btn-outline-primary">View</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

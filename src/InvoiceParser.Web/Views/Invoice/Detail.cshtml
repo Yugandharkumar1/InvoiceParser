@@ -1,0 +1,219 @@
+@model InvoiceParser.Core.Entities.Invoice
+
+@{
+    ViewData["Title"] = "Invoice Detail";
+}
+
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        @TempData["SuccessMessage"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">Invoice #@(Model.InvoiceNumber ?? Model.Id.ToString())</h4>
+                <a asp-action="Index" class="btn btn-sm btn-outline-light">Back to List</a>
+            </div>
+            <div class="card-body">
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <span class="text-muted small">Carrier</span>
+                        <p class="fw-semibold mb-0">@Model.CarrierName</p>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="text-muted small">Account</span>
+                        <p class="fw-semibold mb-0">@Model.CarrierAccount</p>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="text-muted small">Invoice Date</span>
+                        <p class="fw-semibold mb-0">@Model.InvoiceDate?.ToString("MM/dd/yyyy")</p>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="text-muted small">Due Date</span>
+                        <p class="fw-semibold mb-0">@Model.InvoiceDueDate?.ToString("MM/dd/yyyy")</p>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <span class="text-muted small">Statement Period</span>
+                        <p class="fw-semibold mb-0">
+                            @Model.InvoiceStartDate?.ToString("MM/dd/yyyy") &ndash; @Model.InvoiceEndDate?.ToString("MM/dd/yyyy")
+                        </p>
+                    </div>
+                </div>
+
+                <h5 class="mb-3">Financial Summary</h5>
+                <div class="table-responsive mb-4">
+                    <table class="table table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Previous Balance</th>
+                                <th>Payments</th>
+                                <th>Prev. Adjustments</th>
+                                <th>Curr. Adjustments</th>
+                                <th>Current Charges</th>
+                                <th>Taxes/Fees</th>
+                                <th class="table-active fw-bold">Balance Due</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>@Model.BeginningBalance?.ToString("C")</td>
+                                <td>@Model.Payment?.ToString("C")</td>
+                                <td>@Model.PreviousAdjustments?.ToString("C")</td>
+                                <td>@Model.CurrentAdjustments?.ToString("C")</td>
+                                <td>@Model.CurrentCharges?.ToString("C")</td>
+                                <td>@Model.CurrentTax?.ToString("C")</td>
+                                <td class="fw-bold">@Model.EndingBalance?.ToString("C")</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h5 class="mb-3">Charge Line Items (@Model.Charges.Count)</h5>
+                @if (Model.Charges.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-striped table-bordered" id="detailChargesTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Description</th>
+                                    <th>Line</th>
+                                    <th>Location</th>
+                                    <th class="text-end">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{ var idx = 1; }
+                                @foreach (var charge in Model.Charges)
+                                {
+                                    <tr>
+                                        <td>@idx</td>
+                                        <td>@charge.ChargeDescription</td>
+                                        <td>@charge.Line</td>
+                                        <td>@charge.Location</td>
+                                        <td class="text-end">@charge.Amount?.ToString("C")</td>
+                                    </tr>
+                                    idx++;
+                                }
+                            </tbody>
+                            <tfoot class="table-light">
+                                <tr>
+                                    <td colspan="4" class="text-end fw-bold">Total:</td>
+                                    <td class="text-end fw-bold">@Model.Charges.Sum(c => c.Amount ?? 0).ToString("C")</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <!-- Pagination controls -->
+                    <div id="detailPagination" class="d-flex justify-content-between align-items-center mt-2 mb-3" style="display:none !important;">
+                        <span id="detailPageInfo" class="text-muted small"></span>
+                        <nav>
+                            <ul class="pagination pagination-sm mb-0" id="detailPageButtons"></ul>
+                        </nav>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="detailToggleAll">Show All</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="alert alert-info">No charge line items recorded for this invoice.</div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            var PAGE_SIZE = 15;
+            var currentPage = 1;
+            var showAll = false;
+            var table = document.getElementById('detailChargesTable');
+            if (!table) return;
+
+            function getRows() {
+                return Array.from(table.querySelectorAll('tbody tr'));
+            }
+
+            function renderPage() {
+                var rows = getRows();
+                var totalRows = rows.length;
+                var totalPages = Math.ceil(totalRows / PAGE_SIZE);
+                var pagination = document.getElementById('detailPagination');
+                var pageInfo = document.getElementById('detailPageInfo');
+                var pageButtons = document.getElementById('detailPageButtons');
+
+                if (totalRows <= PAGE_SIZE) {
+                    rows.forEach(function (r) { r.style.display = ''; });
+                    pagination.style.display = 'none';
+                    return;
+                }
+
+                pagination.style.removeProperty('display');
+
+                if (showAll) {
+                    rows.forEach(function (r) { r.style.display = ''; });
+                    pageInfo.textContent = 'Showing all ' + totalRows + ' charges';
+                    pageButtons.innerHTML = '';
+                    return;
+                }
+
+                if (currentPage > totalPages) currentPage = totalPages;
+                if (currentPage < 1) currentPage = 1;
+                var start = (currentPage - 1) * PAGE_SIZE;
+                var end = Math.min(start + PAGE_SIZE, totalRows);
+
+                rows.forEach(function (r, i) {
+                    r.style.display = (i >= start && i < end) ? '' : 'none';
+                });
+
+                pageInfo.textContent = 'Showing ' + (start + 1) + '-' + end + ' of ' + totalRows + ' charges';
+
+                pageButtons.innerHTML = '';
+                var prevLi = document.createElement('li');
+                prevLi.className = 'page-item' + (currentPage <= 1 ? ' disabled' : '');
+                prevLi.innerHTML = '<a class="page-link" href="#">&laquo;</a>';
+                prevLi.addEventListener('click', function (e) { e.preventDefault(); if (currentPage > 1) { currentPage--; renderPage(); } });
+                pageButtons.appendChild(prevLi);
+
+                var maxVisible = 7;
+                var startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+                var endPage = Math.min(totalPages, startPage + maxVisible - 1);
+                if (endPage - startPage < maxVisible - 1) startPage = Math.max(1, endPage - maxVisible + 1);
+
+                for (var p = startPage; p <= endPage; p++) {
+                    (function (pg) {
+                        var li = document.createElement('li');
+                        li.className = 'page-item' + (pg === currentPage ? ' active' : '');
+                        li.innerHTML = '<a class="page-link" href="#">' + pg + '</a>';
+                        li.addEventListener('click', function (e) { e.preventDefault(); currentPage = pg; renderPage(); });
+                        pageButtons.appendChild(li);
+                    })(p);
+                }
+
+                var nextLi = document.createElement('li');
+                nextLi.className = 'page-item' + (currentPage >= totalPages ? ' disabled' : '');
+                nextLi.innerHTML = '<a class="page-link" href="#">&raquo;</a>';
+                nextLi.addEventListener('click', function (e) { e.preventDefault(); if (currentPage < totalPages) { currentPage++; renderPage(); } });
+                pageButtons.appendChild(nextLi);
+            }
+
+            document.getElementById('detailToggleAll').addEventListener('click', function () {
+                showAll = !showAll;
+                this.textContent = showAll ? 'Paginate' : 'Show All';
+                renderPage();
+            });
+
+            renderPage();
+        })();
+    </script>
+}
