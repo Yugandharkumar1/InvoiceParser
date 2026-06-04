@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "l5zxEihYQfa7UaO2bNoQbaZ1Q5R3r9w5O788WJJAvXn5bo1TFmWmWCpngwPDCgwSBR5tQjyCCM7yrTopmTaG/w==",
+  "dgSpecHash": "1OzKehgCpFp7Z3SwMoynTKMdioTI+muMHlOWa2rSh9BpgE6VIB6Xni9bYjqcIniW/YwgMLuv29+WA/mqUF3X1g==",
   "success": true,
-  "projectFilePath": "C:\\Users\\ADMIN\\source\\repos\\InvoiceParser\\src\\InvoiceParser.Web\\InvoiceParser.Web.csproj",
+  "projectFilePath": "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Web\\InvoiceParser.Web.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\ADMIN\\.nuget\\packages\\azure.core\\1.35.0\\azure.core.1.35.0.nupkg.sha512",
     "C:\\Users\\ADMIN\\.nuget\\packages\\azure.identity\\1.10.3\\azure.identity.1.10.3.nupkg.sha512",

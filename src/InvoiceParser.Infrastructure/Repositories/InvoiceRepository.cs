@@ -32,6 +32,46 @@ public class InvoiceRepository : IInvoiceRepository
             .OrderBy(r => r.SortOrder)
             .ToListAsync();
 
+    public async Task<List<VendorParsingRule>> GetAllRulesForCarrierAsync(int carrierId)
+        => await _db.VendorParsingRules
+            .Where(r => r.CarrierId == carrierId)
+            .OrderBy(r => r.SortOrder)
+            .ThenBy(r => r.FieldName)
+            .ToListAsync();
+
+    public async Task<VendorParsingRule?> GetRuleByIdAsync(int id)
+        => await _db.VendorParsingRules.FindAsync(id);
+
+    public async Task<VendorParsingRule> SaveRuleAsync(VendorParsingRule rule)
+    {
+        _db.VendorParsingRules.Add(rule);
+        await _db.SaveChangesAsync();
+        return rule;
+    }
+
+    public async Task UpdateRuleAsync(VendorParsingRule rule)
+    {
+        _db.VendorParsingRules.Update(rule);
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task DeleteRuleAsync(int id)
+    {
+        var rule = await _db.VendorParsingRules.FindAsync(id);
+        if (rule != null)
+        {
+            _db.VendorParsingRules.Remove(rule);
+            await _db.SaveChangesAsync();
+        }
+    }
+
+    public async Task<string?> GetLatestPdfTextForCarrierAsync(int carrierId)
+        => await _db.Invoices
+            .Where(i => i.CarrierId == carrierId && i.PdfText != null && i.PdfText != "")
+            .OrderByDescending(i => i.InvoiceDate ?? i.Id)
+            .Select(i => i.PdfText)
+            .FirstOrDefaultAsync();
+
     public async Task<Invoice> SaveInvoiceAsync(Invoice invoice)
     {
         _db.Invoices.Add(invoice);

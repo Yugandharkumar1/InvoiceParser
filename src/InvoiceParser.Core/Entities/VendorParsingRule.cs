@@ -44,4 +44,28 @@ public class VendorParsingRule
 
     [Column("FailCount")]
     public int FailCount { get; set; }
+
+    /// <summary>
+    /// How the condition is evaluated against the source.
+    /// Values: regex_match (default/legacy), equals, not_equals, contains, does_not_contain,
+    ///         starts_with, ends_with, is_empty, is_not_empty, greater_than, less_than.
+    /// </summary>
+    [Column("ConditionType")]
+    [StringLength(30)]
+    public string ConditionType { get; set; } = "regex_match";
+
+    /// <summary>
+    /// What is tested by the condition.
+    /// Values: line_text (default), amount, field_value.
+    /// </summary>
+    [Column("ConditionSource")]
+    [StringLength(30)]
+    public string ConditionSource { get; set; } = "line_text";
+
+    /// <summary>
+    /// JSON-serialised <c>List&lt;TransformStep&gt;</c> applied to the extracted value before storing.
+    /// Null means no transformation.
+    /// </summary>
+    [Column("TransformationsJson")]
+    public string? TransformationsJson { get; set; }
 }
