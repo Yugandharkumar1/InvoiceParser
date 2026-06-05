@@ -1,0 +1,149 @@
+@model InvoiceParser.Web.Models.RulesSectionViewModel
+@{
+    var rules      = Model.Rules;
+    var carrierId  = Model.CarrierId;
+    var tableKey   = Model.Section;
+}
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+            <span class="fw-semibold">@Model.SectionTitle</span>
+            <span class="badge @Model.BadgeClass ms-2">@rules.Count rule@(rules.Count != 1 ? "s" : "")</span>
+            <p class="text-muted small mb-0 mt-1">@Model.SectionDesc</p>
+        </div>
+        <a asp-action="Wizard" asp-route-carrierId="@carrierId" asp-route-section="@tableKey"
+           class="btn btn-sm btn-outline-primary flex-shrink-0">+ Add Rule</a>
+    </div>
+
+    @if (rules.Count == 0)
+    {
+        <div class="card-body text-muted fst-italic py-3">
+            No rules configured for this section yet — ML/regex defaults will be used.
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:4%">#</th>
+                        <th style="width:18%">Field</th>
+                        <th style="width:12%">Match Type</th>
+                        <th style="width:30%">Pattern / Value</th>
+                        <th style="width:16%">Transforms</th>
+                        <th style="width:7%">Stats</th>
+                        <th style="width:6%">On/Off</th>
+                        <th style="width:7%"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var rule in rules.OrderBy(r => r.SortOrder))
+                    {
+                        <tr class="@(rule.IsActive ? "" : "table-secondary text-muted")">
+                            <td class="text-center small">@rule.SortOrder</td>
+                            <td>
+                                <code class="small">@rule.FieldName</code>
+                                @if (!string.IsNullOrWhiteSpace(rule.FieldType) && rule.FieldType != "string")
+                                {
+                                    <span class="badge ms-1 @FieldTypeBadge(rule.FieldType) small">@rule.FieldType</span>
+                                }
+                            </td>
+                            <td>
+                                <span class="badge @ConditionBadge(rule.ConditionType) small">
+                                    @(rule.ConditionType ?? "regex_match")
+                                </span>
+                            </td>
+                            <td>
+                                <code class="small text-break" style="word-break:break-all;max-width:260px;display:inline-block;">
+                                    @rule.RegexPattern
+                                </code>
+                            </td>
+                            <td class="small text-muted">@TransformSummary(rule.TransformationsJson)</td>
+                            <td class="text-center small">
+                                <span class="text-success" title="Successes">@rule.SuccessCount ✓</span>
+                                @if (rule.FailCount > 0)
+                                {
+                                    <span class="text-danger ms-1" title="Failures">@rule.FailCount ✗</span>
+                                }
+                            </td>
+                            <td class="text-center">
+                                <form asp-controller="CarrierRules" asp-action="Toggle"
+                                      asp-route-id="@rule.Id" method="post" class="d-inline">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit"
+                                            class="btn btn-sm @(rule.IsActive ? "btn-success" : "btn-outline-secondary")"
+                                            title="@(rule.IsActive ? "Click to disable" : "Click to enable")">
+                                        @(rule.IsActive ? "On" : "Off")
+                                    </button>
+                                </form>
+                            </td>
+                            <td class="text-center">
+                                <div class="d-flex gap-1 justify-content-center">
+                                    <a asp-controller="CarrierRules" asp-action="Edit"
+                                       asp-route-id="@rule.Id"
+                                       class="btn btn-sm btn-outline-primary">Edit</a>
+                                    @if (Model.ShowDeleteBtn)
+                                    {
+                                        <form asp-controller="CarrierRules" asp-action="Delete"
+                                              asp-route-id="@rule.Id" method="post" class="d-inline"
+                                              onsubmit="return confirm('Delete this rule?')">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">Del</button>
+                                        </form>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@functions {
+    string ConditionBadge(string? ct) => (ct ?? "regex_match") switch
+    {
+        "regex_match"      => "bg-dark",
+        "starts_with"      => "bg-primary",
+        "ends_with"        => "bg-primary",
+        "contains"         => "bg-info text-dark",
+        "does_not_contain" => "bg-warning text-dark",
+        "equals"           => "bg-success",
+        "not_equals"       => "bg-danger",
+        _                  => "bg-secondary",
+    };
+
+    string FieldTypeBadge(string? ft) => (ft ?? "string") switch
+    {
+        "skip"            => "bg-danger",
+        "line_anchor"     => "bg-primary",
+        "location_anchor" => "bg-info text-dark",
+        "decimal"         => "bg-success",
+        "date"            => "bg-warning text-dark",
+        _                 => "bg-secondary",
+    };
+
+    string TransformSummary(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return "—";
+        try
+        {
+            var steps = System.Text.Json.JsonSerializer.Deserialize<
+                List<InvoiceParser.Core.Services.TransformStep>>(json,
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (steps == null || steps.Count == 0) return "—";
+            return string.Join(" → ", steps.Select(s =>
+            {
+                var lbl = s.Type;
+                if (!string.IsNullOrWhiteSpace(s.Value1)) lbl += $"({s.Value1}";
+                if (!string.IsNullOrWhiteSpace(s.Value2)) lbl += $", {s.Value2}";
+                if (!string.IsNullOrWhiteSpace(s.Value1)) lbl += ")";
+                return lbl;
+            }));
+        }
+        catch { return json ?? "—"; }
+    }
+}

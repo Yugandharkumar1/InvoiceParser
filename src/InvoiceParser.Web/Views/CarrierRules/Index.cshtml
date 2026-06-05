@@ -1,0 +1,138 @@
+@model IEnumerable<InvoiceParser.Core.Entities.VendorParsingRule>
+@{
+    ViewData["Title"] = $"Extraction Rules — {ViewBag.CarrierName}";
+    int carrierId = (int)ViewBag.CarrierId;
+    string carrierName = ViewBag.CarrierName ?? "Carrier";
+
+    var summaryRules   = Model.Where(r => r.TargetTable == "t_invoice").ToList();
+    var chargeRules    = Model.Where(r => r.TargetTable == "t_charge").ToList();
+    var usageRules     = Model.Where(r => r.TargetTable == "t_usage").ToList();
+    var inventoryRules = Model.Where(r => r.TargetTable == "t_inventory").ToList();
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a asp-action="Carriers">Carriers</a></li>
+                <li class="breadcrumb-item active">@carrierName</li>
+            </ol>
+        </nav>
+        <h4 class="mb-0">@carrierName — Extraction Rules</h4>
+        <p class="text-muted small mb-0">
+            Rules run after ML extraction. Each section maps to a separate database table.
+            Click <strong>+ Add</strong> in any section to add a rule for that table only.
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        <a asp-action="Create" asp-route-carrierId="@carrierId"
+           class="btn btn-outline-secondary btn-sm align-self-center"
+           title="Advanced / developer mode">Advanced</a>
+    </div>
+</div>
+
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show">
+        @TempData["SuccessMessage"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show">
+        @TempData["ErrorMessage"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<!-- ═══ INVOICE SUMMARY RULES (t_invoice) ════════════════════════════════ -->
+@await Html.PartialAsync("_RulesSection", new InvoiceParser.Web.Models.RulesSectionViewModel
+{
+    SectionTitle   = "Invoice Summary",
+    SectionDesc    = "Fields extracted from the invoice header: invoice number, dates, totals, account number, etc.",
+    BadgeClass     = "bg-primary",
+    Section        = "t_invoice",
+    CarrierId      = carrierId,
+    Rules          = summaryRules,
+    ShowDeleteBtn  = false,
+})
+
+<!-- ═══ LINE ITEM / CHARGE RULES (t_charge) ══════════════════════════════ -->
+@await Html.PartialAsync("_RulesSection", new InvoiceParser.Web.Models.RulesSectionViewModel
+{
+    SectionTitle   = "Line Item Charges",
+    SectionDesc    = "Rules for individual charge rows: descriptions, amounts, line anchors (phone/circuit numbers), location anchors, and skip conditions.",
+    BadgeClass     = "bg-success",
+    Section        = "t_charge",
+    CarrierId      = carrierId,
+    Rules          = chargeRules,
+    ShowDeleteBtn  = true,
+})
+
+<!-- ═══ USAGE RULES (t_usage) ════════════════════════════════════════════ -->
+@await Html.PartialAsync("_RulesSection", new InvoiceParser.Web.Models.RulesSectionViewModel
+{
+    SectionTitle   = "Usage Records",
+    SectionDesc    = "Per-line usage detail rows: service names (USOCs), usage limits, amounts used, charges, and usage type (Voice, Data, SMS, Roaming, etc.).",
+    BadgeClass     = "bg-info text-dark",
+    Section        = "t_usage",
+    CarrierId      = carrierId,
+    Rules          = usageRules,
+    ShowDeleteBtn  = true,
+})
+
+<!-- ═══ INVENTORY RULES (t_inventory) ════════════════════════════════════ -->
+@await Html.PartialAsync("_RulesSection", new InvoiceParser.Web.Models.RulesSectionViewModel
+{
+    SectionTitle   = "Inventory",
+    SectionDesc    = "Equipment and service inventory rows: reference numbers, service types, inventory names, employee assignments, and locations.",
+    BadgeClass     = "bg-warning text-dark",
+    Section        = "t_inventory",
+    CarrierId      = carrierId,
+    Rules          = inventoryRules,
+    ShowDeleteBtn  = true,
+})
+
+@functions {
+    string ConditionBadgeClass(string? ct) => (ct ?? "regex_match") switch
+    {
+        "regex_match"      => "bg-dark",
+        "starts_with"      => "bg-primary",
+        "ends_with"        => "bg-primary",
+        "contains"         => "bg-info text-dark",
+        "does_not_contain" => "bg-warning text-dark",
+        "equals"           => "bg-success",
+        "not_equals"       => "bg-danger",
+        _                  => "bg-secondary",
+    };
+
+    string FieldTypeBadgeClass(string? ft) => (ft ?? "string") switch
+    {
+        "skip"            => "bg-danger",
+        "line_anchor"     => "bg-primary",
+        "location_anchor" => "bg-info text-dark",
+        _                 => "bg-secondary",
+    };
+
+    string TransformSummary(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return "—";
+        try
+        {
+            var steps = System.Text.Json.JsonSerializer.Deserialize<
+                List<InvoiceParser.Core.Services.TransformStep>>(json,
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (steps == null || steps.Count == 0) return "—";
+            return string.Join(" → ", steps.Select(s =>
+            {
+                var lbl = s.Type;
+                if (!string.IsNullOrWhiteSpace(s.Value1)) lbl += $"({s.Value1}";
+                if (!string.IsNullOrWhiteSpace(s.Value2)) lbl += $", {s.Value2}";
+                if (!string.IsNullOrWhiteSpace(s.Value1)) lbl += ")";
+                return lbl;
+            }));
+        }
+        catch { return json ?? "—"; }
+    }
+}

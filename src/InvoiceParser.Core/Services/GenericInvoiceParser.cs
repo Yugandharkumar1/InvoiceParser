@@ -59,8 +59,14 @@ public class GenericInvoiceParser
             .Select(r => r.RegexPattern)
             .ToList();
 
+        var anchorRules = activeRules
+            .Where(r => r.TargetTable == "t_charge" &&
+                        (r.FieldType == "line_anchor" || r.FieldType == "location_anchor" ||
+                         r.FieldName == "line_number" || r.FieldName == "location"))
+            .ToList();
+
         var normalized = InvoiceTextNormalizer.Normalize(pdfText);
-        var result = SmartParse(normalized);
+        var result = SmartParse(normalized, anchorRules);
 
         VendorParsingPluginRegistry.ApplyAll(carrierCode, normalized, result);
 
@@ -77,6 +83,7 @@ public class GenericInvoiceParser
     /// <summary>
     /// Applies learned VendorParsingRules on top of an existing parse result.
     /// Rules override any previously extracted values for the same field.
+    /// Supports both legacy regex-only rules and the new configurable condition/transform rules.
     /// </summary>
     public void ApplyLearnedRulesOverlay(string pdfText, ParsedInvoiceResult result,
         IEnumerable<VendorParsingRule> rules)
@@ -90,24 +97,57 @@ public class GenericInvoiceParser
             .Where(r => r.TargetTable == "t_invoice" && r.FieldType != "skip")
             .ToList();
 
+        var textLines = pdfText.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+
         foreach (var rule in summaryRules)
         {
             try
             {
-                var match = Regex.Match(pdfText, rule.RegexPattern,
-                    RegexOptions.Singleline | RegexOptions.IgnoreCase);
-                if (match.Success && match.Groups.Count > 1)
+                string? value = null;
+
+                string? matchedLine = null;
+                if (IsRegexCondition(rule.ConditionType))
                 {
-                    var value = match.Groups[1].Value.Trim();
-                    if (!string.IsNullOrWhiteSpace(value))
-                        result.SummaryFields[rule.FieldName] = value;
+                    // Legacy + regex_match: match pattern against full text, extract group 1
+                    var match = Regex.Match(pdfText, rule.RegexPattern,
+                        RegexOptions.Singleline | RegexOptions.IgnoreCase);
+                    if (match.Success && match.Groups.Count > 1)
+                    {
+                        value       = match.Groups[1].Value.Trim();
+                        matchedLine = match.Value.Trim();
+                    }
                 }
+                else
+                {
+                    // Structured condition: evaluate per-line
+                    foreach (var line in textLines)
+                    {
+                        var trimmed = line.Trim();
+                        if (!ConditionEvaluator.Evaluate(trimmed, rule.ConditionType, rule.RegexPattern))
+                            continue;
+                        value       = trimmed;
+                        matchedLine = trimmed;
+                        break;
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(value)) continue;
+
+                // Apply transformations — pass pdfText + matchedLine for join_next/prev_line support
+                var steps = TransformPipeline.Deserialize(rule.TransformationsJson);
+                if (steps != null)
+                    value = TransformPipeline.Apply(value, steps, pdfText, matchedLine);
+
+                if (!string.IsNullOrWhiteSpace(value))
+                    result.SummaryFields[rule.FieldName] = value;
             }
-            catch { /* skip invalid regex */ }
+            catch { /* skip invalid rule */ }
         }
 
         var chargeRules = activeRules
-            .Where(r => r.TargetTable == "t_charge" && r.FieldType != "skip")
+            .Where(r => r.TargetTable == "t_charge" && r.FieldType != "skip"
+                     && r.FieldType != "line_anchor" && r.FieldType != "location_anchor"
+                     && r.FieldName != "line_number" && r.FieldName != "location")
             .ToList();
 
         foreach (var rule in chargeRules)
@@ -138,6 +178,10 @@ public class GenericInvoiceParser
             catch { /* skip invalid regex */ }
         }
     }
+
+    private static bool IsRegexCondition(string? conditionType)
+        => string.IsNullOrEmpty(conditionType) ||
+           conditionType.Equals("regex_match", StringComparison.OrdinalIgnoreCase);
 
     private static void CleanChargeDescriptions(ParsedInvoiceResult result, List<string> skipPatterns)
     {
@@ -206,17 +250,19 @@ public class GenericInvoiceParser
     /// Extracts only charge line items from the PDF text (no summary fields).
     /// Use as a fallback when ML/AI produces summary fields but no charges.
     /// </summary>
-    public List<ParsedCharge> ExtractChargesFromText(string pdfText)
+    public List<ParsedCharge> ExtractChargesFromText(string pdfText,
+        IList<Entities.VendorParsingRule>? anchorRules = null)
     {
         var normalized = InvoiceTextNormalizer.Normalize(pdfText);
         var result = new ParsedInvoiceResult();
-        ChargeExtractor.Extract(normalized, result.Charges);
+        ChargeExtractor.Extract(normalized, result.Charges, anchorRules);
         ChargeExtractor.DeduplicateCharges(result.Charges);
         AssociateCircuitIds(normalized, result);
         return result.Charges;
     }
 
-    private static ParsedInvoiceResult SmartParse(string normalizedText)
+    private static ParsedInvoiceResult SmartParse(string normalizedText,
+        IList<Entities.VendorParsingRule>? anchorRules = null)
     {
         var result = new ParsedInvoiceResult();
 
@@ -227,7 +273,7 @@ public class GenericInvoiceParser
 
         TotalExtractor.ExtractEndBal(normalizedText, result.SummaryFields);
 
-        ChargeExtractor.Extract(normalizedText, result.Charges);
+        ChargeExtractor.Extract(normalizedText, result.Charges, anchorRules);
 
         return result;
     }

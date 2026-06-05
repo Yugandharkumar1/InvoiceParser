@@ -8,6 +8,12 @@ public interface IInvoiceRepository
     Task<List<Carrier>> GetCarriersAsync();
     Task<Carrier?> GetCarrierByIdAsync(int id);
     Task<List<VendorParsingRule>> GetRulesForCarrierAsync(int carrierId);
+    Task<List<VendorParsingRule>> GetAllRulesForCarrierAsync(int carrierId);
+    Task<VendorParsingRule?> GetRuleByIdAsync(int id);
+    Task<VendorParsingRule> SaveRuleAsync(VendorParsingRule rule);
+    Task UpdateRuleAsync(VendorParsingRule rule);
+    Task DeleteRuleAsync(int id);
+    Task<string?> GetLatestPdfTextForCarrierAsync(int carrierId);
     Task<Invoice> SaveInvoiceAsync(Invoice invoice);
     Task<Invoice?> GetInvoiceByIdAsync(int id);
     Task<List<Invoice>> GetAllInvoicesAsync();

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
+using InvoiceParser.Core.Entities;
 using InvoiceParser.Core.Services;
 
 namespace InvoiceParser.Core.Parsing;
@@ -63,12 +64,25 @@ public static class ChargeExtractor
         "PAYMENT", "THANK YOU", "ADJUSTMENT",
     };
 
-    public static void Extract(string pdfText, IList<ParsedCharge> charges)
+    public static void Extract(string pdfText, IList<ParsedCharge> charges,
+        IList<VendorParsingRule>? anchorRules = null)
     {
         var lines = pdfText.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
 
+        // Pre-compute anchor rule data so we don't re-allocate per line
+        var lineAnchorRules = anchorRules?
+            .Where(r => r.IsActive && r.TargetTable == "t_charge" &&
+                        (r.FieldType == "line_anchor" || r.FieldName == "line_number"))
+            .ToList();
+        var locationAnchorRules = anchorRules?
+            .Where(r => r.IsActive && r.TargetTable == "t_charge" &&
+                        (r.FieldType == "location_anchor" || r.FieldName == "location"))
+            .ToList();
+        bool hasAnchorRules = (lineAnchorRules?.Count > 0) || (locationAnchorRules?.Count > 0);
+
         string? currentSection = null;
         string? currentLine = null;
+        string? currentLocation = null;
 
         foreach (var rawLine in lines)
         {
@@ -76,6 +90,21 @@ public static class ChargeExtractor
             if (string.IsNullOrWhiteSpace(line) || line.Length < 4) continue;
 
             if (Regex.IsMatch(line, @"^Circuit\s*ID\s*:", RegexOptions.IgnoreCase)) continue;
+
+            // Configurable anchor rules — run before hard-coded patterns
+            if (hasAnchorRules)
+            {
+                if (TryApplyAnchorRule(line, lineAnchorRules, out var extractedLine, pdfText))
+                {
+                    currentLine = extractedLine;
+                    continue;
+                }
+                if (TryApplyAnchorRule(line, locationAnchorRules, out var extractedLocation, pdfText))
+                {
+                    currentLocation = extractedLocation;
+                    continue;
+                }
+            }
 
             if (PhoneTotalPattern.IsMatch(line))
             {
@@ -152,6 +181,7 @@ public static class ChargeExtractor
             {
                 ChargeDescription = desc,
                 Line = currentLine,
+                Location = currentLocation,
             };
 
             var amountToken = match.Groups[2].Value.Trim();
@@ -178,6 +208,34 @@ public static class ChargeExtractor
         var d = desc.Trim();
         if (d.Length <= 12 && Regex.IsMatch(d, @"^(Subtotal|Total)\b", RegexOptions.IgnoreCase))
             return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Tests <paramref name="line"/> against each anchor rule in <paramref name="rules"/>.
+    /// When a match is found, applies transforms and returns the extracted context value.
+    /// <paramref name="pdfText"/> is forwarded to support join_next_line / join_prev_line transforms.
+    /// </summary>
+    private static bool TryApplyAnchorRule(string line,
+        IList<VendorParsingRule>? rules, out string? extracted, string? pdfText = null)
+    {
+        extracted = null;
+        if (rules == null || rules.Count == 0) return false;
+
+        foreach (var rule in rules)
+        {
+            if (!ConditionEvaluator.Evaluate(line, rule.ConditionType, rule.RegexPattern))
+                continue;
+
+            var value = line;
+            var steps = TransformPipeline.Deserialize(rule.TransformationsJson);
+            if (steps != null)
+                value = TransformPipeline.Apply(value, steps, pdfText, matchedLine: line);
+
+            extracted = string.IsNullOrWhiteSpace(value) ? null : value;
+            return true;
+        }
+
         return false;
     }
 
