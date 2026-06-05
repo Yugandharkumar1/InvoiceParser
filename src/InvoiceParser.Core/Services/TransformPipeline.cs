@@ -19,33 +19,62 @@ public static class TransformPipeline
         catch { return null; }
     }
 
-    /// <summary>Apply every step in <paramref name="steps"/> to <paramref name="value"/> and return the result.</summary>
-    public static string Apply(string value, IEnumerable<TransformStep> steps)
+    /// <summary>
+    /// Apply every step in <paramref name="steps"/> to <paramref name="value"/> and return the result.
+    /// Pass <paramref name="pdfText"/> and <paramref name="matchedLine"/> so that line-joining transforms
+    /// (<c>join_next_line</c>, <c>join_prev_line</c>) can find adjacent lines in the source text.
+    /// </summary>
+    public static string Apply(string value, IEnumerable<TransformStep> steps,
+        string? pdfText = null, string? matchedLine = null)
     {
+        // Pre-split the PDF text into lines once (only when needed)
+        string[]? lines = null;
+        int matchedIdx  = -1;
+
         foreach (var step in steps)
         {
             if (string.IsNullOrEmpty(step.Type)) continue;
-            value = ApplyStep(value, step);
+
+            // Lazy-initialise line array for join operations
+            if ((step.Type == "join_next_line" || step.Type == "join_prev_line") &&
+                lines == null && !string.IsNullOrEmpty(pdfText))
+            {
+                lines = pdfText.Split('\n');
+                if (!string.IsNullOrEmpty(matchedLine))
+                {
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        if (string.Equals(lines[i].TrimEnd(), matchedLine.TrimEnd(),
+                            StringComparison.OrdinalIgnoreCase))
+                        { matchedIdx = i; break; }
+                    }
+                }
+            }
+
+            value = ApplyStep(value, step, lines, matchedIdx);
         }
         return value;
     }
 
-    private static string ApplyStep(string value, TransformStep step)
+    private static string ApplyStep(string value, TransformStep step,
+        string[]? lines = null, int matchedIdx = -1)
     {
         try
         {
             return step.Type.ToLowerInvariant() switch
             {
-                "remove_prefix" => RemovePrefix(value, step.Value1),
-                "remove_suffix" => RemoveSuffix(value, step.Value1),
-                "replace"       => Replace(value, step.Value1, step.Value2),
-                "trim"          => value.Trim(),
-                "to_upper"      => value.ToUpperInvariant(),
-                "to_lower"      => value.ToLowerInvariant(),
+                "remove_prefix"   => RemovePrefix(value, step.Value1),
+                "remove_suffix"   => RemoveSuffix(value, step.Value1),
+                "replace"         => Replace(value, step.Value1, step.Value2),
+                "trim"            => value.Trim(),
+                "to_upper"        => value.ToUpperInvariant(),
+                "to_lower"        => value.ToLowerInvariant(),
                 "extract_between" => ExtractBetween(value, step.Value1, step.Value2),
-                "regex_extract" => RegexExtract(value, step.Value1),
-                "convert_date"  => ConvertDate(value, step.Value1, step.Value2),
-                _               => value,
+                "regex_extract"   => RegexExtract(value, step.Value1),
+                "convert_date"    => ConvertDate(value, step.Value1, step.Value2),
+                "join_next_line"  => JoinAdjacentLine(value, step.Value1, lines, matchedIdx, +1),
+                "join_prev_line"  => JoinAdjacentLine(value, step.Value1, lines, matchedIdx, -1),
+                _                 => value,
             };
         }
         catch
@@ -94,6 +123,34 @@ public static class TransformPipeline
         if (m.Success && m.Groups.Count > 1) return m.Groups[1].Value.Trim();
         if (m.Success) return m.Value.Trim();
         return value;
+    }
+
+    /// <summary>
+    /// Appends (direction=+1) or prepends (direction=-1) the adjacent non-empty line from the PDF text
+    /// to <paramref name="value"/>, joined with <paramref name="separator"/> (defaults to a space).
+    /// If context lines are unavailable the original value is returned unchanged.
+    /// </summary>
+    private static string JoinAdjacentLine(string value, string? separator,
+        string[]? lines, int matchedIdx, int direction)
+    {
+        if (lines == null || matchedIdx < 0) return value;
+
+        var sep = separator ?? " ";
+
+        // Walk in the given direction until we find a non-empty line
+        for (int i = matchedIdx + direction;
+             i >= 0 && i < lines.Length;
+             i += direction)
+        {
+            var candidate = lines[i].Trim();
+            if (candidate.Length == 0) continue;
+
+            return direction > 0
+                ? value.TrimEnd() + sep + candidate   // join_next_line
+                : candidate + sep + value.TrimStart(); // join_prev_line
+        }
+
+        return value; // no adjacent non-empty line found
     }
 
     private static string ConvertDate(string value, string? inputFormat, string? outputFormat)

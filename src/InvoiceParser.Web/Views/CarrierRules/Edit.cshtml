@@ -1,0 +1,383 @@
+@model InvoiceParser.Web.Controllers.RuleEditViewModel
+@{
+    bool isNew = Model.Id == 0;
+    ViewData["Title"] = isNew ? "New Extraction Rule" : "Edit Extraction Rule";
+    int carrierId = (int)ViewBag.CarrierId;
+    string carrierName = ViewBag.CarrierName ?? "Carrier";
+}
+
+<div class="row justify-content-center">
+<div class="col-lg-9">
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Carriers">Carriers</a></li>
+        <li class="breadcrumb-item"><a asp-action="Index" asp-route-carrierId="@carrierId">@carrierName</a></li>
+        <li class="breadcrumb-item active">@(isNew ? "New Rule" : "Edit Rule")</li>
+    </ol>
+</nav>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">@(isNew ? "New Extraction Rule" : "Edit Extraction Rule")</h5>
+    </div>
+    <div class="card-body">
+
+        @if (!ViewData.ModelState.IsValid)
+        {
+            <div class="alert alert-danger">
+                <ul class="mb-0">
+                    @foreach (var e in ViewData.ModelState.Values.SelectMany(v => v.Errors))
+                    { <li>@e.ErrorMessage</li> }
+                </ul>
+            </div>
+        }
+
+        <form asp-action="Save" method="post" id="ruleForm">
+            @Html.AntiForgeryToken()
+            <input type="hidden" asp-for="Id" />
+            <input type="hidden" asp-for="CarrierId" />
+            <input type="hidden" asp-for="CarrierName" />
+
+            <!-- ── Target & Field ──────────────────────────────── -->
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Target Table</label>
+                    <select asp-for="TargetTable" asp-items="ViewBag.TargetTables"
+                            class="form-select" id="targetTableSelect"></select>
+                    <div class="form-text">
+                        <em>Invoice Summary</em> rules override summary header fields (Invoice Number, Due Date, etc.).<br />
+                        <em>Line Item</em> rules set context anchors (Line Number, Location) or skip charge rows.
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Field Name</label>
+                    <div class="input-group">
+                        <select id="fieldNamePicker" class="form-select" style="max-width:200px;">
+                            <option value="">— pick known field —</option>
+                            @foreach (var f in (IEnumerable<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>)ViewBag.KnownFields)
+                            { <option value="@f.Value">@f.Text</option> }
+                        </select>
+                        <input asp-for="FieldName" class="form-control" placeholder="or type custom name" />
+                    </div>
+                    <span asp-validation-for="FieldName" class="text-danger small"></span>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Field Type</label>
+                    <select asp-for="FieldType" asp-items="ViewBag.FieldTypes" class="form-select"></select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold">Sort Order</label>
+                    <input asp-for="SortOrder" type="number" class="form-control" />
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <div class="form-check form-switch mb-2">
+                        <input asp-for="IsActive" type="checkbox" class="form-check-input" role="switch" />
+                        <label asp-for="IsActive" class="form-check-label">Active</label>
+                    </div>
+                </div>
+            </div>
+
+            <hr />
+
+            <!-- ── Condition ──────────────────────────────────── -->
+            <h6 class="fw-semibold text-primary mb-3">Step 1 — Condition (when does this rule activate?)</h6>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">Condition Source</label>
+                    <select asp-for="ConditionSource" asp-items="ViewBag.ConditionSources"
+                            class="form-select"></select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Condition Type</label>
+                    <select asp-for="ConditionType" asp-items="ViewBag.ConditionTypes"
+                            class="form-select" id="conditionTypeSelect"></select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" id="patternLabel">Pattern / Value</label>
+                    <input asp-for="RegexPattern" class="form-control font-monospace"
+                           placeholder="e.g. TOTAL DUE BY\s+([\d/]+)" id="regexInput" />
+                    <div class="form-text" id="patternHint">
+                        For <strong>regex_match</strong>: use a regex with a capture group (the value in group 1 is extracted).
+                        For other types: enter the exact text to match against.
+                    </div>
+                </div>
+            </div>
+
+            <hr />
+
+            <!-- ── Transformations ────────────────────────────── -->
+            <h6 class="fw-semibold text-primary mb-3">Step 2 — Transformations (optional, applied after extraction)</h6>
+
+            <input type="hidden" asp-for="TransformationsJson" id="transformationsJsonInput" />
+
+            <div id="transformSteps" class="mb-3"></div>
+
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="addTransformStep">
+                + Add Transform Step
+            </button>
+
+            <hr />
+
+            <!-- ── Live Test ──────────────────────────────────── -->
+            <h6 class="fw-semibold text-primary mb-3">Step 3 — Test your rule</h6>
+
+            <!-- Text source selector -->
+            <div class="mb-3">
+                <div class="d-flex gap-3 align-items-center flex-wrap mb-2">
+                    <div class="form-check form-check-inline mb-0">
+                        <input class="form-check-input" type="radio" name="textSource"
+                               id="srcStored" value="stored" checked />
+                        <label class="form-check-label" for="srcStored">
+                            Use stored invoice text
+                            <span class="text-muted small">(most recent invoice for this carrier)</span>
+                        </label>
+                    </div>
+                    <div class="form-check form-check-inline mb-0">
+                        <input class="form-check-input" type="radio" name="textSource"
+                               id="srcManual" value="manual" />
+                        <label class="form-check-label" for="srcManual">
+                            Paste invoice text manually
+                            <span class="text-muted small">(useful when no invoice has been uploaded yet)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="manualTextPanel" style="display:none;">
+                    <textarea id="manualPdfText" class="form-control font-monospace"
+                              rows="10"
+                              placeholder="Paste raw invoice text here — copy it from a text editor, email, or any text version of the PDF…"
+                              style="font-size:.8rem;resize:vertical;"></textarea>
+                    <div class="form-text">
+                        Tip: open your PDF in a text editor (or use Notepad after copying from the PDF viewer)
+                        and paste the content here. Each line will be matched against your rule.
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 align-items-center mb-2">
+                <button type="button" class="btn btn-outline-info" id="testRuleBtn">
+                    ▶ Test Rule
+                </button>
+                <span class="text-muted small" id="testSourceHint">
+                    Testing against stored PDF text for this carrier.
+                </span>
+            </div>
+
+            <div id="testResult" class="mt-2" style="display:none;">
+                <div id="testResultContent"></div>
+            </div>
+
+            <hr />
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary px-4">Save Rule</button>
+                <a asp-action="Index" asp-route-carrierId="@carrierId" class="btn btn-outline-secondary">Cancel</a>
+                @if (!isNew)
+                {
+                    <form asp-action="Delete" asp-route-id="@Model.Id" method="post" class="ms-auto"
+                          onsubmit="return confirm('Delete this rule permanently?')">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-outline-danger">Delete Rule</button>
+                    </form>
+                }
+            </div>
+
+        </form>
+    </div>
+</div>
+
+</div><!-- col -->
+</div><!-- row -->
+
+@section Scripts {
+<script>
+(function () {
+    // ── Known transform types metadata ────────────────────────────────────
+    var transformTypes = @Html.Raw(ViewBag.TransformTypesJson ?? "[]");
+
+    var steps = [];
+
+    // ── Restore existing transform steps from hidden field ────────────────
+    var existingJson = document.getElementById('transformationsJsonInput').value;
+    if (existingJson) {
+        try { steps = JSON.parse(existingJson) || []; } catch (e) { steps = []; }
+    }
+
+    function renderSteps() {
+        var container = document.getElementById('transformSteps');
+        container.innerHTML = '';
+        if (steps.length === 0) {
+            container.innerHTML = '<p class="text-muted small">No transforms — extracted value is used as-is.</p>';
+            return;
+        }
+        steps.forEach(function (step, idx) {
+            var meta = transformTypes.find(function(t) { return t.value === step.Type; }) || {};
+            var html = '<div class="card card-body mb-2 py-2 transform-step-row" data-idx="' + idx + '">'
+                + '<div class="row g-2 align-items-center">'
+                + '<div class="col-auto"><span class="badge bg-secondary">' + (idx + 1) + '</span></div>'
+                + '<div class="col-auto">'
+                + '<select class="form-select form-select-sm step-type" data-idx="' + idx + '" style="min-width:175px;">';
+            transformTypes.forEach(function (tt) {
+                html += '<option value="' + tt.value + '"' + (tt.value === step.Type ? ' selected' : '') + '>' + tt.label + '</option>';
+            });
+            html += '</select></div>';
+            if (meta.hasV1) {
+                html += '<div class="col"><input type="text" class="form-control form-control-sm step-v1" data-idx="' + idx + '"'
+                    + ' placeholder="' + (meta.v1label || 'Value 1') + '" value="' + escHtml(step.Value1 || '') + '" /></div>';
+            }
+            if (meta.hasV2) {
+                html += '<div class="col"><input type="text" class="form-control form-control-sm step-v2" data-idx="' + idx + '"'
+                    + ' placeholder="' + (idx === 0 && step.Type === 'convert_date' ? 'Output format (e.g. yyyy-MM-dd)' : 'Value 2') + '"'
+                    + ' value="' + escHtml(step.Value2 || '') + '" /></div>';
+            }
+            html += '<div class="col-auto">'
+                + '<button type="button" class="btn btn-sm btn-outline-danger step-remove" data-idx="' + idx + '">×</button>'
+                + '</div></div></div>';
+            container.insertAdjacentHTML('beforeend', html);
+        });
+        syncHidden();
+    }
+
+    function syncHidden() {
+        document.getElementById('transformationsJsonInput').value =
+            steps.length > 0 ? JSON.stringify(steps) : '';
+    }
+
+    function escHtml(s) {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    document.getElementById('addTransformStep').addEventListener('click', function () {
+        steps.push({ Type: 'trim', Value1: null, Value2: null });
+        renderSteps();
+    });
+
+    document.getElementById('transformSteps').addEventListener('change', function (e) {
+        var idx = parseInt(e.target.getAttribute('data-idx'));
+        if (isNaN(idx)) return;
+        if (e.target.classList.contains('step-type'))  { steps[idx].Type   = e.target.value; renderSteps(); }
+        if (e.target.classList.contains('step-v1'))    { steps[idx].Value1 = e.target.value; syncHidden(); }
+        if (e.target.classList.contains('step-v2'))    { steps[idx].Value2 = e.target.value; syncHidden(); }
+    });
+
+    document.getElementById('transformSteps').addEventListener('input', function (e) {
+        var idx = parseInt(e.target.getAttribute('data-idx'));
+        if (isNaN(idx)) return;
+        if (e.target.classList.contains('step-v1'))  { steps[idx].Value1 = e.target.value; syncHidden(); }
+        if (e.target.classList.contains('step-v2'))  { steps[idx].Value2 = e.target.value; syncHidden(); }
+    });
+
+    document.getElementById('transformSteps').addEventListener('click', function (e) {
+        if (e.target.classList.contains('step-remove')) {
+            var idx = parseInt(e.target.getAttribute('data-idx'));
+            steps.splice(idx, 1);
+            renderSteps();
+        }
+    });
+
+    // ── Pattern label hints ───────────────────────────────────────────────
+    var condTypeSelect = document.getElementById('conditionTypeSelect');
+    var patternLabel   = document.getElementById('patternLabel');
+    var patternHint    = document.getElementById('patternHint');
+
+    function updatePatternHint() {
+        var ct = condTypeSelect.value;
+        if (ct === 'regex_match') {
+            patternLabel.textContent = 'Regex Pattern';
+            patternHint.innerHTML = 'Use a regex with a capture group — the value in <strong>group 1</strong> is extracted.';
+        } else if (ct === 'is_empty' || ct === 'is_not_empty') {
+            patternLabel.textContent = 'Value (not used)';
+            patternHint.textContent = 'No value needed for this condition type.';
+        } else {
+            patternLabel.textContent = 'Condition Value';
+            patternHint.textContent = 'The exact text to compare against (case-insensitive).';
+        }
+    }
+    condTypeSelect.addEventListener('change', updatePatternHint);
+    updatePatternHint();
+
+    // ── Known field picker ────────────────────────────────────────────────
+    document.getElementById('fieldNamePicker').addEventListener('change', function () {
+        if (this.value) document.getElementById('FieldName').value = this.value;
+    });
+
+    // ── Text source toggle ────────────────────────────────────────────────
+    var srcHint = document.getElementById('testSourceHint');
+
+    function updateSourceUI() {
+        var isManual = document.getElementById('srcManual').checked;
+        document.getElementById('manualTextPanel').style.display = isManual ? '' : 'none';
+        srcHint.textContent = isManual
+            ? 'Testing against the text you pasted below.'
+            : 'Testing against stored PDF text for this carrier.';
+    }
+
+    document.getElementById('srcStored').addEventListener('change', updateSourceUI);
+    document.getElementById('srcManual').addEventListener('change', updateSourceUI);
+
+    // ── Live test ─────────────────────────────────────────────────────────
+    document.getElementById('testRuleBtn').addEventListener('click', function () {
+        var btn = this;
+        var isManual = document.getElementById('srcManual').checked;
+        var manualText = document.getElementById('manualPdfText').value.trim();
+
+        if (isManual && !manualText) {
+            document.getElementById('testResultContent').innerHTML =
+                '<div class="alert alert-warning mb-0">⚠ Please paste some invoice text into the box above before testing.</div>';
+            document.getElementById('testResult').style.display = '';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Testing…';
+
+        var payload = {
+            carrierId:           @carrierId,
+            conditionType:       condTypeSelect.value,
+            conditionSource:     document.getElementById('ConditionSource').value,
+            regexPattern:        document.getElementById('regexInput').value,
+            transformationsJson: document.getElementById('transformationsJsonInput').value || null,
+            pdfText:             isManual ? manualText : null
+        };
+
+        fetch('/CarrierRules/Test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            var box = document.getElementById('testResult');
+            var content = document.getElementById('testResultContent');
+            box.style.display = '';
+            if (data.success) {
+                content.innerHTML = '<div class="alert alert-success mb-0">'
+                    + '<strong>✓ ' + data.count + ' match' + (data.count !== 1 ? 'es' : '') + ' found:</strong>'
+                    + '<ul class="mb-0 mt-1">'
+                    + data.matches.map(function (m) { return '<li><code>' + escHtml(m) + '</code></li>'; }).join('')
+                    + '</ul></div>';
+            } else {
+                content.innerHTML = '<div class="alert alert-warning mb-0">⚠ ' + escHtml(data.message) + '</div>';
+            }
+        })
+        .catch(function (err) {
+            document.getElementById('testResultContent').innerHTML =
+                '<div class="alert alert-danger mb-0">Request failed: ' + escHtml(String(err)) + '</div>';
+            document.getElementById('testResult').style.display = '';
+        })
+        .finally(function () {
+            btn.disabled = false;
+            btn.textContent = '▶ Test Rule';
+        });
+    });
+
+    // Initial render
+    renderSteps();
+})();
+</script>
+}

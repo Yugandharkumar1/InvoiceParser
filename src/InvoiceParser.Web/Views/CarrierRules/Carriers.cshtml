@@ -1,0 +1,139 @@
+@model IEnumerable<InvoiceParser.Core.Entities.Carrier>
+@{
+    ViewData["Title"] = "Carrier Extraction Rules";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h3 class="mb-0">Carrier Extraction Rules</h3>
+        <p class="text-muted small mb-0">Select a carrier to view and manage its configurable extraction rules.</p>
+    </div>
+    <span id="carrierCount" class="text-muted small"></span>
+</div>
+
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show">
+        @TempData["SuccessMessage"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="mb-4" style="max-width:340px;">
+    <div class="input-group">
+        <span class="input-group-text bg-white border-end-0">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" class="text-muted" viewBox="0 0 16 16">
+                <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.099zm-5.242 1.156a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z"/>
+            </svg>
+        </span>
+        <input type="text" id="carrierSearch" class="form-control border-start-0 ps-0"
+               placeholder="Search carriers…" autocomplete="off" />
+        <button type="button" class="btn btn-outline-secondary" id="clearCarrierSearch"
+                style="display:none;" title="Clear search">×</button>
+    </div>
+    <div id="noCarrierMatch" class="text-muted small mt-2" style="display:none;">
+        No carriers match your search.
+    </div>
+</div>
+
+<div id="carrierScrollArea">
+    <div class="row g-3" id="carrierGrid">
+        @foreach (var carrier in Model)
+        {
+            <div class="col-md-4 col-lg-3 carrier-col"
+                 data-name="@((carrier.Name + " " + carrier.Code).ToLower())">
+                <a asp-action="Index" asp-route-carrierId="@carrier.Id"
+                   class="card h-100 shadow-sm text-decoration-none text-dark carrier-card">
+                    <div class="card-body d-flex align-items-center gap-3">
+                        <div class="carrier-icon bg-primary text-white rounded d-flex align-items-center
+                                    justify-content-center flex-shrink-0"
+                             style="width:42px;height:42px;font-size:1.2rem;font-weight:700;">
+                            @((carrier.Name ?? "?")[..1].ToUpper())
+                        </div>
+                        <div>
+                            <div class="fw-semibold">@carrier.Name</div>
+                            @if (!string.IsNullOrWhiteSpace(carrier.Code))
+                            {
+                                <div class="text-muted small">@carrier.Code</div>
+                            }
+                        </div>
+                    </div>
+                </a>
+            </div>
+        }
+    </div>
+</div>
+
+@section Scripts {
+    <style>
+        /* Lock the page — no body scroll */
+        html, body { overflow: hidden; height: 100%; }
+
+        .carrier-card { border: 1px solid #dee2e6; transition: box-shadow .15s, border-color .15s; }
+        .carrier-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.12) !important; border-color: #0d6efd; }
+        #carrierSearch:focus { box-shadow: none; border-color: #86b7fe; }
+        .carrier-col.hidden { display: none !important; }
+
+        /* Scrollable card container — fills remaining viewport height */
+        #carrierScrollArea {
+            overflow-y: auto;
+            overflow-x: hidden;
+            /* viewport minus: navbar ~57px, page padding ~16px, heading ~56px, search box ~60px, gap ~8px */
+            height: calc(100vh - 230px);
+            padding-right: 4px;   /* prevent content hiding under scrollbar */
+        }
+
+        /* Thin, styled scrollbar (Chrome/Edge) */
+        #carrierScrollArea::-webkit-scrollbar { width: 6px; }
+        #carrierScrollArea::-webkit-scrollbar-track { background: transparent; }
+        #carrierScrollArea::-webkit-scrollbar-thumb { background: #ced4da; border-radius: 3px; }
+        #carrierScrollArea::-webkit-scrollbar-thumb:hover { background: #adb5bd; }
+    </style>
+    <script>
+    (function () {
+        var input    = document.getElementById('carrierSearch');
+        var clearBtn = document.getElementById('clearCarrierSearch');
+        var noMatch  = document.getElementById('noCarrierMatch');
+        var countEl  = document.getElementById('carrierCount');
+        var cols     = Array.from(document.querySelectorAll('.carrier-col'));
+        var total    = cols.length;
+
+        function updateCount(visible) {
+            countEl.textContent = visible === total
+                ? total + ' carrier' + (total !== 1 ? 's' : '')
+                : visible + ' of ' + total + ' carriers';
+        }
+
+        function filter() {
+            var term = input.value.trim().toLowerCase();
+            clearBtn.style.display = term ? '' : 'none';
+            var visible = 0;
+            cols.forEach(function (col) {
+                var match = !term || col.getAttribute('data-name').includes(term);
+                col.classList.toggle('hidden', !match);
+                if (match) visible++;
+            });
+            noMatch.style.display = (term && visible === 0) ? '' : 'none';
+            updateCount(visible);
+        }
+
+        input.addEventListener('input', filter);
+        clearBtn.addEventListener('click', function () {
+            input.value = '';
+            filter();
+            input.focus();
+        });
+
+        // Keyboard shortcut: focus search on '/'
+        document.addEventListener('keydown', function (e) {
+            if (e.key === '/' && document.activeElement !== input) {
+                e.preventDefault();
+                input.focus();
+                input.select();
+            }
+        });
+
+        updateCount(total);
+    })();
+    </script>
+}

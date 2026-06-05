@@ -68,7 +68,8 @@ public class InvoiceRepository : IInvoiceRepository
     public async Task<string?> GetLatestPdfTextForCarrierAsync(int carrierId)
         => await _db.Invoices
             .Where(i => i.CarrierId == carrierId && i.PdfText != null && i.PdfText != "")
-            .OrderByDescending(i => i.InvoiceDate ?? i.Id)
+            .OrderByDescending(i => i.InvoiceDate)
+            .ThenByDescending(i => i.Id)
             .Select(i => i.PdfText)
             .FirstOrDefaultAsync();
 

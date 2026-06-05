@@ -94,12 +94,12 @@ public static class ChargeExtractor
             // Configurable anchor rules — run before hard-coded patterns
             if (hasAnchorRules)
             {
-                if (TryApplyAnchorRule(line, lineAnchorRules, out var extractedLine))
+                if (TryApplyAnchorRule(line, lineAnchorRules, out var extractedLine, pdfText))
                 {
                     currentLine = extractedLine;
                     continue;
                 }
-                if (TryApplyAnchorRule(line, locationAnchorRules, out var extractedLocation))
+                if (TryApplyAnchorRule(line, locationAnchorRules, out var extractedLocation, pdfText))
                 {
                     currentLocation = extractedLocation;
                     continue;
@@ -214,9 +214,10 @@ public static class ChargeExtractor
     /// <summary>
     /// Tests <paramref name="line"/> against each anchor rule in <paramref name="rules"/>.
     /// When a match is found, applies transforms and returns the extracted context value.
+    /// <paramref name="pdfText"/> is forwarded to support join_next_line / join_prev_line transforms.
     /// </summary>
     private static bool TryApplyAnchorRule(string line,
-        IList<VendorParsingRule>? rules, out string? extracted)
+        IList<VendorParsingRule>? rules, out string? extracted, string? pdfText = null)
     {
         extracted = null;
         if (rules == null || rules.Count == 0) return false;
@@ -229,7 +230,7 @@ public static class ChargeExtractor
             var value = line;
             var steps = TransformPipeline.Deserialize(rule.TransformationsJson);
             if (steps != null)
-                value = TransformPipeline.Apply(value, steps);
+                value = TransformPipeline.Apply(value, steps, pdfText, matchedLine: line);
 
             extracted = string.IsNullOrWhiteSpace(value) ? null : value;
             return true;

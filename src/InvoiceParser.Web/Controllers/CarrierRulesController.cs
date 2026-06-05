@@ -13,6 +13,7 @@ public class CarrierRulesController : Controller
 {
     private readonly IInvoiceRepository _repo;
     private readonly GenericInvoiceParser _parser;
+    private readonly PdfTextExtractorService _pdfExtractor;
     private readonly ILogger<CarrierRulesController> _logger;
 
     private static readonly string[] KnownSummaryFields =
@@ -22,17 +23,73 @@ public class CarrierRulesController : Controller
         "prev_adj", "curr_adj", "curr_chg", "curr_tax", "end_bal",
     };
 
-    private static readonly string[] KnownLineItemFields =
+    private static readonly string[] KnownChargeFields =
     {
-        "line_number", "location",
+        "line_number", "location", "charge_desc", "amount",
+    };
+
+    private static readonly string[] KnownUsageFields =
+    {
+        "line_number", "usoc_name", "usage_limit", "usage", "charge", "usagetype",
+    };
+
+    private static readonly string[] KnownInventoryFields =
+    {
+        "reference_number", "service_type", "inventory_name", "employee_name", "location_name",
+    };
+
+    /// <summary>
+    /// Human-readable field labels mapped to internal extraction metadata.
+    /// Grouped by target table so the wizard can filter to only show relevant fields.
+    /// </summary>
+    public static readonly Dictionary<string, WizardFieldDef> FriendlyFields = new()
+    {
+        // ── Invoice Summary (t_invoice) ──────────────────────────────────────
+        ["Invoice Number"]      = new("invoice_number",  "t_invoice", "string",          "The unique invoice identifier printed on the bill."),
+        ["Account Number"]      = new("carrier_account", "t_invoice", "string",          "The carrier account number for this customer."),
+        ["Invoice Date"]        = new("invoice_date",     "t_invoice", "date",            "The date the invoice was issued / bill date."),
+        ["Due Date"]            = new("invoice_due_dtm",  "t_invoice", "date",            "The payment due date."),
+        ["Statement Start"]     = new("invoice_st_dtm",   "t_invoice", "date",            "First day of the billing period."),
+        ["Statement End"]       = new("invoice_end_dtm",  "t_invoice", "date",            "Last day of the billing period."),
+        ["Previous Balance"]    = new("beg_bal",          "t_invoice", "decimal",         "Balance carried forward from the previous invoice."),
+        ["Payments"]            = new("payment",          "t_invoice", "decimal",         "Payments received during this billing period."),
+        ["Current Charges"]     = new("curr_chg",         "t_invoice", "decimal",         "New charges for this billing period."),
+        ["Taxes & Fees"]        = new("curr_tax",         "t_invoice", "decimal",         "Government taxes, surcharges, and fees."),
+        ["Total Charges"]       = new("end_bal",          "t_invoice", "decimal",         "Total charges — the ending balance / amount due on this invoice."),
+
+        // ── Line Item Charges (t_charge) ─────────────────────────────────────
+        ["Charge Description"]  = new("charge_desc",      "t_charge",  "string",          "Description of the charge (e.g. 'Monthly Service Fee', 'Long Distance')."),
+        ["Charge Amount"]       = new("amount",            "t_charge",  "decimal",         "The dollar amount for this charge line."),
+        ["Line Number"]         = new("line_number",       "t_charge",  "line_anchor",     "Sets the phone/circuit number context for the charges that follow (e.g. 'FOR 061-827-9465')."),
+        ["Location"]            = new("location",          "t_charge",  "location_anchor", "Sets the service address context for charges that follow (e.g. 'Service at: BEND, OR')."),
+        ["Skip Charge Line"]    = new("skip",              "t_charge",  "skip",            "Lines matching this rule will be completely ignored during charge extraction."),
+
+        // ── Usage Records (t_usage) ──────────────────────────────────────────
+        ["Usage – Line Number"] = new("line_number",       "t_usage",   "string",          "The phone/circuit number associated with this usage record."),
+        ["Usage – Service"]     = new("usoc_name",         "t_usage",   "string",          "Service or feature name (USOC description, e.g. 'Voice', 'Data Plan')."),
+        ["Usage – Limit"]       = new("usage_limit",       "t_usage",   "string",          "Included allowance or cap (e.g. 'Unlimited', '2 GB', '500 min')."),
+        ["Usage – Amount Used"] = new("usage",             "t_usage",   "string",          "Actual usage quantity (e.g. '1.5 GB', '450 min')."),
+        ["Usage – Charge"]      = new("charge",            "t_usage",   "decimal",         "Dollar amount billed for this usage item."),
+        ["Usage – Type"]        = new("usagetype",         "t_usage",   "string",          "Category of usage (e.g. 'Voice', 'Data', 'SMS', 'Roaming')."),
+        ["Skip Usage Line"]     = new("skip",              "t_usage",   "skip",            "Usage rows matching this rule will be ignored during extraction."),
+
+        // ── Inventory (t_inventory) ───────────────────────────────────────────
+        ["Inventory – Reference #"] = new("reference_number", "t_inventory", "string", "Unique reference or service order number for this item."),
+        ["Inventory – Service Type"]= new("service_type",     "t_inventory", "string", "Type of service (e.g. 'Voice Line', 'Data Plan', 'Equipment')."),
+        ["Inventory – Name"]        = new("inventory_name",   "t_inventory", "string", "Name of the inventory item or feature."),
+        ["Inventory – Employee"]    = new("employee_name",    "t_inventory", "string", "Employee or user assigned to this inventory item."),
+        ["Inventory – Location"]    = new("location_name",    "t_inventory", "string", "Physical location or site for this inventory item."),
+        ["Skip Inventory Line"]     = new("skip",             "t_inventory", "skip",   "Inventory rows matching this rule will be ignored during extraction."),
     };
 
     public CarrierRulesController(IInvoiceRepository repo,
         GenericInvoiceParser parser,
+        PdfTextExtractorService pdfExtractor,
         ILogger<CarrierRulesController> logger)
     {
         _repo = repo;
         _parser = parser;
+        _pdfExtractor = pdfExtractor;
         _logger = logger;
     }
 
@@ -74,6 +131,45 @@ public class CarrierRulesController : Controller
         };
         PopulateViewBag(carrierId, carrier.Name ?? string.Empty);
         return View("Edit", vm);
+    }
+
+    // GET /CarrierRules/Wizard/{carrierId}[&section=t_invoice|t_charge|t_usage|t_inventory]
+    public async Task<IActionResult> Wizard(int carrierId, string? section = null)
+    {
+        var carrier = await _repo.GetCarrierByIdAsync(carrierId);
+        if (carrier == null) return NotFound();
+
+        var pdfText = await _repo.GetLatestPdfTextForCarrierAsync(carrierId);
+        var lines = pdfText?
+            .Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim())
+            .Where(l => l.Length > 1)
+            .ToList() ?? new List<string>();
+
+        var sectionLabel = section switch
+        {
+            "t_invoice"   => "Invoice Summary",
+            "t_charge"    => "Line Item Charges",
+            "t_usage"     => "Usage Records",
+            "t_inventory" => "Inventory",
+            _             => null,
+        };
+
+        ViewBag.CarrierId  = carrierId;
+        ViewBag.CarrierName = carrier.Name;
+        ViewBag.Section = section;
+        ViewBag.SectionLabel = sectionLabel;
+        ViewBag.PdfLinesJson = JsonSerializer.Serialize(lines);
+        ViewBag.FriendlyFieldsJson = JsonSerializer.Serialize(
+            FriendlyFields.Select(kv => new
+            {
+                label       = kv.Key,
+                fieldName   = kv.Value.FieldName,
+                targetTable = kv.Value.TargetTable,
+                fieldType   = kv.Value.FieldType,
+                description = kv.Value.Description,
+            }));
+        return View();
     }
 
     // GET /CarrierRules/Edit/{id}
@@ -201,17 +297,18 @@ public class CarrierRulesController : Controller
                 }
                 else
                 {
-                    if (!ConditionEvaluator.Evaluate(line, request.ConditionType, request.RegexPattern))
+                    if (!ConditionEvaluator.Evaluate(line, request.ConditionType ?? "regex_match", request.RegexPattern))
                         continue;
                     extracted = line;
                 }
 
-                // Apply transforms
+                // Apply transforms — pass pdfText + matched line for join_next/prev_line support
                 if (!string.IsNullOrWhiteSpace(request.TransformationsJson))
                 {
                     var steps = TransformPipeline.Deserialize(request.TransformationsJson);
                     if (steps != null && extracted != null)
-                        extracted = TransformPipeline.Apply(extracted, steps);
+                        extracted = TransformPipeline.Apply(extracted, steps,
+                            pdfText: pdfText, matchedLine: line);
                 }
 
                 if (extracted != null)
@@ -267,6 +364,43 @@ public class CarrierRulesController : Controller
             .ToArray();
 
         return Ok(new { lines });
+    }
+
+    // POST /CarrierRules/ExtractLines — accepts a PDF upload, returns its text lines (for wizard)
+    [HttpPost]
+    public async Task<IActionResult> ExtractLines(IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest(new { error = "No file uploaded." });
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext != ".pdf" && !PdfTextExtractorService.IsImageFile(file.FileName))
+            return BadRequest(new { error = "Only PDF and image files are supported." });
+
+        try
+        {
+            string text;
+            await using var stream = file.OpenReadStream();
+            text = ext == ".pdf"
+                ? _pdfExtractor.ExtractText(stream)
+                : _pdfExtractor.ExtractTextFromImage(stream);
+
+            if (string.IsNullOrWhiteSpace(text))
+                return Ok(new { lines = Array.Empty<string>(), warning = "No text could be extracted from this file. It may be a scanned image PDF — try uploading it through the main Invoice Upload page which uses OCR." });
+
+            var lines = text
+                .Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(l => l.Trim())
+                .Where(l => l.Length > 1)
+                .ToArray();
+
+            return Ok(new { lines, count = lines.Length });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "ExtractLines failed for file {FileName}", file.FileName);
+            return Ok(new { lines = Array.Empty<string>(), warning = $"Could not extract text: {ex.Message}" });
+        }
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
@@ -335,8 +469,10 @@ public class CarrierRulesController : Controller
 
         ViewBag.TargetTables = new SelectList(new[]
         {
-            new { Value = "t_invoice", Text = "Invoice Summary (t_invoice)" },
-            new { Value = "t_charge",  Text = "Line Item / Charge (t_charge)" },
+            new { Value = "t_invoice",   Text = "Invoice Summary (t_invoice)" },
+            new { Value = "t_charge",    Text = "Line Item / Charge (t_charge)" },
+            new { Value = "t_usage",     Text = "Usage Records (t_usage)" },
+            new { Value = "t_inventory", Text = "Inventory (t_inventory)" },
         }, "Value", "Text");
 
         ViewBag.FieldTypes = new SelectList(new[]
@@ -350,22 +486,28 @@ public class CarrierRulesController : Controller
         }, "Value", "Text");
 
         ViewBag.KnownFields = KnownSummaryFields
-            .Concat(KnownLineItemFields)
+            .Concat(KnownChargeFields)
+            .Concat(KnownUsageFields)
+            .Concat(KnownInventoryFields)
+            .Distinct()
             .Select(f => new SelectListItem(f, f))
             .ToList();
 
-        ViewBag.TransformTypes = new[]
+        // Pre-serialize to JSON so Razor can inline it directly without dynamic binding
+        ViewBag.TransformTypesJson = JsonSerializer.Serialize(new[]
         {
-            new { Value = "remove_prefix",   Label = "Remove Prefix",        HasValue1 = true,  HasValue2 = false, Value1Label = "Prefix to remove" },
-            new { Value = "remove_suffix",   Label = "Remove Suffix",        HasValue1 = true,  HasValue2 = false, Value1Label = "Suffix to remove" },
-            new { Value = "replace",         Label = "Replace Text",         HasValue1 = true,  HasValue2 = true,  Value1Label = "Find text" },
-            new { Value = "trim",            Label = "Trim Whitespace",      HasValue1 = false, HasValue2 = false, Value1Label = "" },
-            new { Value = "extract_between", Label = "Extract Between",      HasValue1 = true,  HasValue2 = true,  Value1Label = "Start marker" },
-            new { Value = "regex_extract",   Label = "Regex Extract (Grp 1)",HasValue1 = true,  HasValue2 = false, Value1Label = "Regex pattern" },
-            new { Value = "convert_date",    Label = "Convert Date Format",  HasValue1 = true,  HasValue2 = true,  Value1Label = "Input format (e.g. MM/dd/yy)" },
-            new { Value = "to_upper",        Label = "To Upper Case",        HasValue1 = false, HasValue2 = false, Value1Label = "" },
-            new { Value = "to_lower",        Label = "To Lower Case",        HasValue1 = false, HasValue2 = false, Value1Label = "" },
-        };
+            new { value = "remove_prefix",   label = "Remove Prefix",           hasV1 = true,  hasV2 = false, v1label = "Prefix to remove" },
+            new { value = "remove_suffix",   label = "Remove Suffix",           hasV1 = true,  hasV2 = false, v1label = "Suffix to remove" },
+            new { value = "replace",         label = "Replace Text",            hasV1 = true,  hasV2 = true,  v1label = "Find text" },
+            new { value = "trim",            label = "Trim Whitespace",         hasV1 = false, hasV2 = false, v1label = "" },
+            new { value = "extract_between", label = "Extract Between",         hasV1 = true,  hasV2 = true,  v1label = "Start marker" },
+            new { value = "regex_extract",   label = "Regex Extract (Grp 1)",   hasV1 = true,  hasV2 = false, v1label = "Regex pattern" },
+            new { value = "convert_date",    label = "Convert Date Format",     hasV1 = true,  hasV2 = true,  v1label = "Input format (e.g. MM/dd/yy)" },
+            new { value = "to_upper",        label = "To Upper Case",           hasV1 = false, hasV2 = false, v1label = "" },
+            new { value = "to_lower",        label = "To Lower Case",           hasV1 = false, hasV2 = false, v1label = "" },
+            new { value = "join_next_line",  label = "Join Next Line",          hasV1 = true,  hasV2 = false, v1label = "Separator (default: space)" },
+            new { value = "join_prev_line",  label = "Join Previous Line",      hasV1 = true,  hasV2 = false, v1label = "Separator (default: space)" },
+        });
     }
 }
 
@@ -387,6 +529,8 @@ public class RuleEditViewModel
     public string ConditionSource { get; set; } = "line_text";
     public string? TransformationsJson { get; set; }
 }
+
+public record WizardFieldDef(string FieldName, string TargetTable, string FieldType, string Description);
 
 public class RuleTestRequest
 {

@@ -105,13 +105,17 @@ public class GenericInvoiceParser
             {
                 string? value = null;
 
+                string? matchedLine = null;
                 if (IsRegexCondition(rule.ConditionType))
                 {
                     // Legacy + regex_match: match pattern against full text, extract group 1
                     var match = Regex.Match(pdfText, rule.RegexPattern,
                         RegexOptions.Singleline | RegexOptions.IgnoreCase);
                     if (match.Success && match.Groups.Count > 1)
-                        value = match.Groups[1].Value.Trim();
+                    {
+                        value       = match.Groups[1].Value.Trim();
+                        matchedLine = match.Value.Trim();
+                    }
                 }
                 else
                 {
@@ -121,17 +125,18 @@ public class GenericInvoiceParser
                         var trimmed = line.Trim();
                         if (!ConditionEvaluator.Evaluate(trimmed, rule.ConditionType, rule.RegexPattern))
                             continue;
-                        value = trimmed;
+                        value       = trimmed;
+                        matchedLine = trimmed;
                         break;
                     }
                 }
 
                 if (string.IsNullOrWhiteSpace(value)) continue;
 
-                // Apply transformations
+                // Apply transformations — pass pdfText + matchedLine for join_next/prev_line support
                 var steps = TransformPipeline.Deserialize(rule.TransformationsJson);
                 if (steps != null)
-                    value = TransformPipeline.Apply(value, steps);
+                    value = TransformPipeline.Apply(value, steps, pdfText, matchedLine);
 
                 if (!string.IsNullOrWhiteSpace(value))
                     result.SummaryFields[rule.FieldName] = value;

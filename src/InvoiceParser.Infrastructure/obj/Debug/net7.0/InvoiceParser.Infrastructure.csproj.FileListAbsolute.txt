@@ -31,8 +31,8 @@ E:\VCOM\InvoiceParser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceP
 E:\VCOM\InvoiceParser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.AssemblyInfoInputs.cache
 E:\VCOM\InvoiceParser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.AssemblyInfo.cs
 E:\VCOM\InvoiceParser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.csproj.CoreCompileInputs.cache
-E:\VCOM\InvoiceParser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.csproj.CopyComplete
 E:\VCOM\InvoiceParser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.dll
 E:\VCOM\InvoiceParser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\refint\InvoiceParser.Infrastructure.dll
 E:\VCOM\InvoiceParser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.pdb
 E:\VCOM\InvoiceParser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\ref\InvoiceParser.Infrastructure.dll
+E:\VCOM\InvoiceParser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.csproj.CopyComplete

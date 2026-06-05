@@ -1,0 +1,914 @@
+@{
+    ViewData["Title"] = "Add Extraction Rule";
+    int carrierId      = (int)ViewBag.CarrierId;
+    string carrierName = ViewBag.CarrierName ?? "Carrier";
+    string? section    = ViewBag.Section as string;
+    string? sectionLabel = ViewBag.SectionLabel as string;
+    // A section label means the wizard was opened from a specific table's "+ Add" button.
+    // The field grid will be pre-filtered to show only that table's fields.
+    string step1Heading = sectionLabel != null
+        ? $"Step 1 — Choose the <strong>{sectionLabel}</strong> field to extract"
+        : "Step 1 — What are you teaching the parser to find?";
+    string step1Subtext = sectionLabel != null
+        ? $"Showing only <strong>{sectionLabel}</strong> fields. To add a rule for a different section, go back and click + Add in that section."
+        : "Select the field this rule will extract from the invoice.";
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="Carriers">Carriers</a></li>
+        <li class="breadcrumb-item"><a asp-action="Index" asp-route-carrierId="@carrierId">@carrierName</a></li>
+        <li class="breadcrumb-item active">Add Rule</li>
+    </ol>
+</nav>
+
+<!-- Step indicator -->
+<div class="d-flex align-items-center gap-0 mb-4" id="stepIndicator">
+    <div class="step-pill active" data-step="1">
+        <span class="step-num">1</span>
+        <span class="step-lbl">Choose Field</span>
+    </div>
+    <div class="step-line"></div>
+    <div class="step-pill" data-step="2">
+        <span class="step-num">2</span>
+        <span class="step-lbl">Find It</span>
+    </div>
+    <div class="step-line"></div>
+    <div class="step-pill" data-step="3">
+        <span class="step-num">3</span>
+        <span class="step-lbl">Clean Up &amp; Save</span>
+    </div>
+</div>
+
+<!-- ═══ STEP 1 — Choose field ═══════════════════════════════════════════ -->
+<div class="wizard-step" id="step1">
+    <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">@Html.Raw(step1Heading)</h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-3">@Html.Raw(step1Subtext)</p>
+            <div class="row g-2" id="fieldGrid"></div>
+            <div id="noFieldsMsg" class="alert alert-warning mt-3" style="display:none;">
+                No fields configured for this section yet.
+            </div>
+        </div>
+        <div class="card-footer d-flex justify-content-between align-items-center">
+            <a asp-action="Index" asp-route-carrierId="@carrierId" class="btn btn-outline-secondary">Cancel</a>
+            <div class="d-flex align-items-center gap-3">
+                <a asp-action="Create" asp-route-carrierId="@carrierId" class="text-muted small">
+                    Advanced / Developer mode →
+                </a>
+                <button class="btn btn-primary" id="step1Next" disabled>Next →</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ STEP 2 — Find it in the invoice ════════════════════════════════ -->
+<div class="wizard-step" id="step2" style="display:none;">
+    <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Step 2 — Click the line that contains this value</h5>
+            <span class="badge bg-light text-primary" id="step2FieldBadge"></span>
+        </div>
+        <div class="card-body">
+
+            <div id="noPdfTextMsg" style="display:none;">
+                <div class="alert alert-info mb-3">
+                    <strong>No invoice stored for this carrier yet.</strong>
+                    Upload a sample invoice PDF below — it will be used just for this session to help you define rules.
+                    The file won't be saved or processed permanently.
+                </div>
+
+                <!-- Drop zone -->
+                <div id="pdfDropZone"
+                     class="border rounded d-flex flex-column align-items-center justify-content-center text-center p-5"
+                     style="border-style:dashed!important;border-width:2px!important;border-color:#6c757d;cursor:pointer;background:#f8f9fa;min-height:180px;transition:background .15s,border-color .15s;">
+                    <div style="font-size:2.5rem;">📄</div>
+                    <p class="mb-1 fw-semibold">Drag &amp; drop a PDF here</p>
+                    <p class="text-muted small mb-3">or click to browse</p>
+                    <input type="file" id="pdfFileInput" accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif"
+                           style="display:none;" />
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="browseFileBtn">
+                        Browse file…
+                    </button>
+                </div>
+
+                <div id="uploadProgress" class="mt-3" style="display:none;">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="spinner-border spinner-border-sm text-primary"></div>
+                        <span id="uploadProgressMsg" class="text-muted small">Extracting text from PDF…</span>
+                    </div>
+                </div>
+                <div id="uploadError" class="alert alert-danger mt-3" style="display:none;"></div>
+            </div>
+
+            <div id="pdfLinesSection">
+                <p class="text-muted small mb-2">
+                    Click the line that contains the <strong id="step2FieldLabel"></strong>.
+                    The line is from the most recent invoice uploaded for <strong>@carrierName</strong>.
+                </p>
+                <div class="input-group input-group-sm mb-3" style="max-width:320px;">
+                    <span class="input-group-text bg-white border-end-0">🔍</span>
+                    <input type="text" id="lineSearch" class="form-control border-start-0 ps-0"
+                           placeholder="Filter lines…" autocomplete="off" />
+                </div>
+                <div id="pdfLinesList" class="border rounded" style="max-height:340px;overflow-y:auto;background:#f8f9fa;"></div>
+            </div>
+
+            <div id="selectedLinePanel" class="mt-3" style="display:none;">
+                <hr />
+                <p class="fw-semibold mb-1">Selected line:</p>
+                <div id="selectedLineHighlight" class="p-2 rounded border font-monospace small mb-3"
+                     style="background:#fff;word-break:break-all;"></div>
+
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-5">
+                        <label class="form-label fw-semibold">Extracted value</label>
+                        <input type="text" id="extractedValue" class="form-control"
+                               placeholder="The value we will extract" />
+                        <div class="form-text">Confirm or correct the detected value.</div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">How to match this line</label>
+                        <select id="conditionTypePicker" class="form-select">
+                            <option value="regex_match">By pattern (recommended)</option>
+                            <option value="starts_with">Line starts with…</option>
+                            <option value="contains">Line contains…</option>
+                            <option value="equals">Exact line match</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="button" class="btn btn-outline-info w-100" id="redetectBtn">
+                            ↻ Re-detect
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mt-3">
+                    <label class="form-label fw-semibold text-muted small">Generated rule pattern</label>
+                    <input type="text" id="generatedPattern" class="form-control form-control-sm font-monospace"
+                           placeholder="Pattern will appear here…" />
+                    <div class="form-text">You can edit this if needed. The highlighted value will be what gets saved.</div>
+                </div>
+            </div>
+
+        </div>
+        <div class="card-footer d-flex justify-content-between">
+            <button class="btn btn-outline-secondary" id="step2Back">← Back</button>
+            <button class="btn btn-primary" id="step2Next" disabled>Next →</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ STEP 3 — Clean up & Save ════════════════════════════════════════ -->
+<div class="wizard-step" id="step3" style="display:none;">
+    <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Step 3 — Clean Up &amp; Save</h5>
+            <span class="badge bg-light text-primary" id="step3FieldBadge"></span>
+        </div>
+        <div class="card-body">
+
+            <!-- Summary -->
+            <div class="alert alert-light border mb-4">
+                <div class="row g-2 small">
+                    <div class="col-sm-3 text-muted">Field</div>
+                    <div class="col-sm-9 fw-semibold" id="summaryField"></div>
+                    <div class="col-sm-3 text-muted">Matched line</div>
+                    <div class="col-sm-9 font-monospace" id="summaryLine" style="word-break:break-all;"></div>
+                    <div class="col-sm-3 text-muted">Raw value</div>
+                    <div class="col-sm-9"><code id="summaryRaw"></code></div>
+                </div>
+            </div>
+
+            <!-- Transform options -->
+            <div id="transformOptions"></div>
+
+            <!-- Preview -->
+            <div class="mt-3">
+                <div class="d-flex align-items-center gap-3 mb-2">
+                    <span class="fw-semibold">Final value that will be saved:</span>
+                    <code class="fs-5 text-success" id="finalValuePreview"></code>
+                </div>
+                <div id="previewWarning" class="text-warning small" style="display:none;">
+                    ⚠ Value looks unchanged — consider adding a cleanup step if needed.
+                </div>
+            </div>
+
+        </div>
+        <div class="card-footer d-flex justify-content-between align-items-center">
+            <button class="btn btn-outline-secondary" id="step3Back">← Back</button>
+            <button class="btn btn-success px-4" id="saveWizardBtn">
+                ✓ Save Rule
+            </button>
+        </div>
+    </div>
+    <div id="saveResultBox" class="mt-3" style="display:none;"></div>
+</div>
+
+<!-- Hidden form (submitted on save) -->
+<form id="wizardForm" asp-controller="CarrierRules" asp-action="QuickCreate" method="post" style="display:none;">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="CarrierId"          id="hCarrierId"       value="@carrierId" />
+    <input type="hidden" name="FieldName"          id="hFieldName" />
+    <input type="hidden" name="RegexPattern"       id="hRegexPattern" />
+    <input type="hidden" name="ConditionType"      id="hConditionType" />
+    <input type="hidden" name="ConditionSource"    id="hConditionSource" value="line_text" />
+    <input type="hidden" name="TargetTable"        id="hTargetTable" />
+    <input type="hidden" name="FieldType"          id="hFieldType" />
+    <input type="hidden" name="TransformationsJson" id="hTransforms" />
+    <input type="hidden" name="SortOrder"          id="hSortOrder"       value="10" />
+    <input type="hidden" name="IsActive"           id="hIsActive"        value="true" />
+</form>
+
+@section Scripts {
+<style>
+    /* Step indicator */
+    .step-pill {
+        display: flex; align-items: center; gap: 8px;
+        padding: 6px 14px; border-radius: 20px;
+        background: #e9ecef; color: #6c757d;
+        font-size: .85rem; font-weight: 600;
+        transition: background .2s, color .2s;
+        white-space: nowrap;
+    }
+    .step-pill.active   { background: #0d6efd; color: #fff; }
+    .step-pill.done     { background: #198754; color: #fff; }
+    .step-pill.done .step-num::before { content: '✓ '; }
+    .step-num { font-size: .75rem; }
+    .step-line { flex: 1; height: 2px; background: #dee2e6; min-width: 20px; }
+
+    /* PDF line list */
+    .pdf-line {
+        padding: 5px 10px; cursor: pointer; font-size: .8rem;
+        font-family: monospace; border-bottom: 1px solid #eee;
+        transition: background .1s;
+    }
+    .pdf-line:hover   { background: #e7f1ff; }
+    .pdf-line.selected { background: #0d6efd; color: #fff; }
+    .pdf-line.line-hidden { display: none; }
+
+    /* Value highlight in selected line */
+    .val-highlight { background: #fff3cd; border-radius: 3px; padding: 0 2px; font-weight: 700; }
+    .pdf-line.selected .val-highlight { background: #ffc107; color: #000; }
+
+    /* Field card grid */
+    .field-card {
+        border: 2px solid #dee2e6; border-radius: 8px; padding: 12px 14px;
+        cursor: pointer; transition: border-color .15s, background .15s;
+        height: 100%;
+    }
+    .field-card:hover   { border-color: #0d6efd; background: #f0f6ff; }
+    .field-card.selected { border-color: #0d6efd; background: #e7f1ff; }
+    .field-card .field-label { font-weight: 600; font-size: .9rem; }
+    .field-card .field-desc  { font-size: .75rem; color: #6c757d; margin-top: 4px; }
+
+    /* Transform option rows */
+    .transform-opt { border: 1px solid #dee2e6; border-radius: 6px; padding: 10px 14px; margin-bottom: 10px; }
+    .transform-opt.active { border-color: #0d6efd; background: #f0f6ff; }
+</style>
+
+<script>
+(function () {
+
+// ── Data from server ────────────────────────────────────────────────────────
+var CARRIER_ID   = @carrierId;
+var PDF_LINES    = @Html.Raw(ViewBag.PdfLinesJson ?? "[]");
+var ALL_FIELDS   = @Html.Raw(ViewBag.FriendlyFieldsJson ?? "[]");
+var SECTION      = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(section ?? ""));
+
+// If opened from a specific section's "+ Add", filter fields to that table only
+var FIELD_DEFS   = SECTION
+    ? ALL_FIELDS.filter(function (f) { return f.targetTable === SECTION; })
+    : ALL_FIELDS;
+
+// ── Wizard state ────────────────────────────────────────────────────────────
+var state = {
+    step:           1,
+    fieldDef:       null,   // { label, fieldName, targetTable, fieldType, description }
+    selectedLine:   '',
+    selectedLineIdx: -1,
+    extractedValue: '',
+    conditionType:  'regex_match',
+    generatedPattern: '',
+    transforms:     [],
+    finalValue:     '',
+};
+
+// ── Step navigation ─────────────────────────────────────────────────────────
+function goTo(n) {
+    state.step = n;
+    document.querySelectorAll('.wizard-step').forEach(function (el, i) {
+        el.style.display = (i + 1 === n) ? '' : 'none';
+    });
+    document.querySelectorAll('.step-pill').forEach(function (pill) {
+        var s = parseInt(pill.getAttribute('data-step'));
+        pill.classList.toggle('active', s === n);
+        pill.classList.toggle('done',   s < n);
+    });
+    if (n === 2) renderStep2();
+    if (n === 3) renderStep3();
+}
+
+// ═══ STEP 1 ─────────────────────────────────────────────────────────────────
+
+var fieldGrid = document.getElementById('fieldGrid');
+
+if (FIELD_DEFS.length === 0) {
+    document.getElementById('noFieldsMsg').style.display = '';
+} else {
+    // Group by targetTable so fields are visually clustered when no section filter is active
+    var tableOrder   = ['t_invoice', 't_charge', 't_usage', 't_inventory'];
+    var tableLabels  = {
+        t_invoice:   'Invoice Summary',
+        t_charge:    'Line Item Charges',
+        t_usage:     'Usage Records',
+        t_inventory: 'Inventory',
+    };
+    var tableBadge   = {
+        t_invoice:   'bg-primary',
+        t_charge:    'bg-success',
+        t_usage:     'bg-info text-dark',
+        t_inventory: 'bg-warning text-dark',
+    };
+
+    var byTable = {};
+    FIELD_DEFS.forEach(function (fd) {
+        (byTable[fd.targetTable] = byTable[fd.targetTable] || []).push(fd);
+    });
+
+    tableOrder.forEach(function (tbl) {
+        var group = byTable[tbl];
+        if (!group || group.length === 0) return;
+
+        // Section heading — only shown when multiple tables are visible
+        if (!SECTION) {
+            var hdr = document.createElement('div');
+            hdr.className = 'col-12 mt-3 mb-1';
+            hdr.innerHTML =
+                '<span class="badge ' + tableBadge[tbl] + ' me-2">' + tableLabels[tbl] + '</span>' +
+                '<hr class="d-inline-block w-75 align-middle ms-2" style="margin-top:0;border-color:#dee2e6;" />';
+            fieldGrid.appendChild(hdr);
+        }
+
+        group.forEach(function (fd) {
+            var col = document.createElement('div');
+            col.className = 'col-md-4 col-lg-3';
+            col.innerHTML =
+                '<div class="field-card" data-label="' + esc(fd.label) + '">' +
+                    '<div class="field-label">' + esc(fd.label) + '</div>' +
+                    '<div class="field-desc">'  + esc(fd.description) + '</div>' +
+                '</div>';
+            col.querySelector('.field-card').addEventListener('click', function () {
+                document.querySelectorAll('.field-card').forEach(function (c) { c.classList.remove('selected'); });
+                this.classList.add('selected');
+                state.fieldDef = fd;
+                document.getElementById('step1Next').disabled = false;
+            });
+            fieldGrid.appendChild(col);
+        });
+    });
+}
+
+document.getElementById('step1Next').addEventListener('click', function () {
+    if (!state.fieldDef) return;
+    goTo(2);
+});
+
+// ═══ STEP 2 ─────────────────────────────────────────────────────────────────
+
+function renderStep2() {
+    document.getElementById('step2FieldBadge').textContent = state.fieldDef.label;
+    document.getElementById('step2FieldLabel').textContent = state.fieldDef.label;
+    document.getElementById('step2Next').disabled = true;
+    document.getElementById('selectedLinePanel').style.display = 'none';
+
+    var listEl = document.getElementById('pdfLinesList');
+
+    if (PDF_LINES.length === 0) {
+        document.getElementById('noPdfTextMsg').style.display = '';
+        document.getElementById('pdfLinesSection').style.display = 'none';
+
+        // ── File upload wiring ───────────────────────────────────────────
+        var dropZone   = document.getElementById('pdfDropZone');
+        var fileInput  = document.getElementById('pdfFileInput');
+        var browseBtn  = document.getElementById('browseFileBtn');
+        var progressEl = document.getElementById('uploadProgress');
+        var progressMsg= document.getElementById('uploadProgressMsg');
+        var errorEl    = document.getElementById('uploadError');
+
+        browseBtn.addEventListener('click', function () { fileInput.click(); });
+        dropZone.addEventListener('click', function (e) {
+            if (e.target !== browseBtn) fileInput.click();
+        });
+
+        // Drag visual feedback
+        ['dragenter','dragover'].forEach(function (ev) {
+            dropZone.addEventListener(ev, function (e) {
+                e.preventDefault(); e.stopPropagation();
+                dropZone.style.background = '#e7f1ff';
+                dropZone.style.borderColor = '#0d6efd';
+            });
+        });
+        ['dragleave','drop'].forEach(function (ev) {
+            dropZone.addEventListener(ev, function (e) {
+                e.preventDefault(); e.stopPropagation();
+                dropZone.style.background = '#f8f9fa';
+                dropZone.style.borderColor = '#6c757d';
+            });
+        });
+        dropZone.addEventListener('drop', function (e) {
+            var files = e.dataTransfer.files;
+            if (files.length > 0) uploadFile(files[0]);
+        });
+        fileInput.addEventListener('change', function () {
+            if (this.files.length > 0) uploadFile(this.files[0]);
+        });
+
+        function uploadFile(file) {
+            errorEl.style.display = 'none';
+            progressEl.style.display = '';
+            progressMsg.textContent = 'Extracting text from "' + file.name + '"…';
+            browseBtn.disabled = true;
+
+            var formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/CarrierRules/ExtractLines', { method: 'POST', body: formData })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                progressEl.style.display = 'none';
+                browseBtn.disabled = false;
+
+                if (data.error) {
+                    errorEl.textContent = '⚠ ' + data.error;
+                    errorEl.style.display = '';
+                    return;
+                }
+                if (!data.lines || data.lines.length === 0) {
+                    errorEl.textContent = '⚠ ' + (data.warning || 'No text lines were extracted from this file.');
+                    errorEl.style.display = '';
+                    return;
+                }
+                if (data.warning) {
+                    errorEl.className = 'alert alert-warning mt-3';
+                    errorEl.textContent = '⚠ ' + data.warning;
+                    errorEl.style.display = '';
+                }
+
+                // Load the lines into PDF_LINES and show the list
+                data.lines.forEach(function (l) { PDF_LINES.push(l); });
+                document.getElementById('noPdfTextMsg').style.display = 'none';
+                document.getElementById('pdfLinesSection').style.display = '';
+                renderStep2();
+            })
+            .catch(function (err) {
+                progressEl.style.display = 'none';
+                browseBtn.disabled = false;
+                errorEl.textContent = '⚠ Upload failed: ' + String(err);
+                errorEl.style.display = '';
+            });
+        }
+
+        return;
+    }
+
+    listEl.innerHTML = '';
+    PDF_LINES.forEach(function (line, idx) {
+        var div = document.createElement('div');
+        div.className = 'pdf-line';
+        div.setAttribute('data-idx', idx);
+        div.setAttribute('data-text', line.toLowerCase());
+        div.textContent = line;
+        div.addEventListener('click', function () {
+            document.querySelectorAll('.pdf-line').forEach(function (el) { el.classList.remove('selected'); });
+            div.classList.add('selected');
+            state.selectedLine    = line;
+            state.selectedLineIdx = idx;
+            onLineSelected(line);
+        });
+        listEl.appendChild(div);
+    });
+
+    // Line search
+    document.getElementById('lineSearch').addEventListener('input', function () {
+        var term = this.value.trim().toLowerCase();
+        document.querySelectorAll('.pdf-line').forEach(function (el) {
+            el.classList.toggle('line-hidden', term && !el.getAttribute('data-text').includes(term));
+        });
+    });
+}
+
+function onLineSelected(line) {
+    state.selectedLine = line;
+    var ft   = state.fieldDef.fieldType;
+    var val  = detectValue(line, ft);
+    state.extractedValue = val;
+
+    document.getElementById('extractedValue').value = val;
+    renderHighlightedLine(line, val);
+    buildPattern();
+
+    document.getElementById('selectedLinePanel').style.display = '';
+    document.getElementById('step2Next').disabled = false;
+
+    // Pre-select condition type for anchors/skip
+    if (ft === 'line_anchor' || ft === 'location_anchor') {
+        document.getElementById('conditionTypePicker').value = 'starts_with';
+        state.conditionType = 'starts_with';
+        buildPattern();
+    } else if (ft === 'skip') {
+        document.getElementById('conditionTypePicker').value = 'contains';
+        state.conditionType = 'contains';
+        buildPattern();
+    }
+}
+
+function detectValue(line, fieldType) {
+    // Date
+    if (fieldType === 'date') {
+        var dm;
+        dm = line.match(/\b(\d{1,2}\/\d{1,2}\/\d{2,4})\b/);  if (dm) return dm[1];
+        dm = line.match(/\b(\d{1,2}-\d{1,2}-\d{2,4})\b/);     if (dm) return dm[1];
+        dm = line.match(/\b((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\.?\s+\d{1,2},?\s+\d{4})\b/i); if (dm) return dm[1];
+        dm = line.match(/\b(\d{4}-\d{2}-\d{2})\b/);            if (dm) return dm[1];
+    }
+    // Amount
+    if (fieldType === 'decimal') {
+        // prefer last amount-like token
+        var matches = [...line.matchAll(/\$?\s*(-?[\d,]+\.\d{2})\b/g)];
+        if (matches.length > 0) return matches[matches.length - 1][1].replace(/[,$]/g,'').trim();
+    }
+    // Line / Location anchor — everything after the first "keyword " prefix
+    if (fieldType === 'line_anchor' || fieldType === 'location_anchor') {
+        var parts = line.split(/\s+/);
+        // try to find where the "meaningful" part starts (after FOR, Service at:, etc.)
+        if (parts.length > 1) return parts.slice(1).join(' ');
+        return line;
+    }
+    // Skip — entire line (user usually wants to match a distinctive phrase)
+    if (fieldType === 'skip') {
+        // Return the most distinctive token — last meaningful word
+        return line.trim();
+    }
+    // String — try to get the last whitespace token
+    var tokens = line.trim().split(/\s+/);
+    return tokens[tokens.length - 1] || line;
+}
+
+function renderHighlightedLine(line, value) {
+    var el = document.getElementById('selectedLineHighlight');
+    if (!value) { el.textContent = line; return; }
+    var idx = line.toLowerCase().indexOf(value.toLowerCase());
+    if (idx < 0) { el.textContent = line; return; }
+    el.innerHTML =
+        esc(line.substring(0, idx)) +
+        '<span class="val-highlight">' + esc(line.substring(idx, idx + value.length)) + '</span>' +
+        esc(line.substring(idx + value.length));
+}
+
+function buildPattern() {
+    var line  = state.selectedLine;
+    var val   = document.getElementById('extractedValue').value.trim();
+    var ct    = document.getElementById('conditionTypePicker').value;
+    var ft    = state.fieldDef.fieldType;
+    state.conditionType = ct;
+
+    var pattern = '';
+
+    if (ct === 'starts_with' || ct === 'contains' || ct === 'equals') {
+        // For non-regex: pattern IS the condition value
+        // For anchors: use the prefix (everything before the value)
+        if (ft === 'line_anchor' || ft === 'location_anchor') {
+            var vi = line.toLowerCase().indexOf(val.toLowerCase());
+            pattern = vi > 0 ? line.substring(0, vi).trimEnd() : line;
+        } else {
+            pattern = ct === 'contains' ? val : line;
+        }
+    } else {
+        // regex_match: build capture-group pattern
+        var valueIdx = val ? line.toLowerCase().indexOf(val.toLowerCase()) : -1;
+        if (valueIdx >= 0) {
+            var prefix = line.substring(0, valueIdx).trimEnd();
+            var escaped = escapeRegex(prefix)
+                .replace(/\\ /g, '\\s+')
+                .replace(/\\\$/g, '\\$?');
+            pattern = escaped + '\\s+\\$?\\s*' + capGroup(ft);
+        } else {
+            pattern = escapeRegex(line);
+        }
+    }
+
+    state.generatedPattern = pattern;
+    document.getElementById('generatedPattern').value = pattern;
+    renderHighlightedLine(line, val);
+}
+
+function capGroup(fieldType) {
+    if (fieldType === 'date')    return '([\\d/\\-]+)';
+    if (fieldType === 'decimal') return '([\\-\\d,]+\\.\\d{2})';
+    return '(\\S+)';
+}
+
+// live update on value / condition changes
+document.getElementById('extractedValue').addEventListener('input', function () {
+    state.extractedValue = this.value.trim();
+    buildPattern();
+});
+document.getElementById('conditionTypePicker').addEventListener('change', buildPattern);
+document.getElementById('generatedPattern').addEventListener('input', function () {
+    state.generatedPattern = this.value;
+});
+document.getElementById('redetectBtn').addEventListener('click', function () {
+    if (state.selectedLine) onLineSelected(state.selectedLine);
+});
+
+document.getElementById('step2Back').addEventListener('click', function () { goTo(1); });
+document.getElementById('step2Next').addEventListener('click', function () {
+    state.generatedPattern = document.getElementById('generatedPattern').value.trim();
+    state.extractedValue   = document.getElementById('extractedValue').value.trim();
+    state.conditionType    = document.getElementById('conditionTypePicker').value;
+    goTo(3);
+});
+
+// ═══ STEP 3 ─────────────────────────────────────────────────────────────────
+
+function renderStep3() {
+    var fd  = state.fieldDef;
+    var ft  = fd.fieldType;
+    var raw = state.extractedValue;
+
+    document.getElementById('step3FieldBadge').textContent = fd.label;
+    document.getElementById('summaryField').textContent    = fd.label;
+    document.getElementById('summaryLine').textContent     = state.selectedLine;
+    document.getElementById('summaryRaw').textContent      = raw;
+
+    state.transforms = [];
+    var optContainer = document.getElementById('transformOptions');
+    optContainer.innerHTML = '';
+
+    // Build transform suggestions based on field type
+    var suggestions = buildTransformSuggestions(ft, raw, state.conditionType);
+
+    if (suggestions.length === 0) {
+        optContainer.innerHTML = '<p class="text-muted">No cleanup needed — the value will be saved as-is.</p>';
+    } else {
+        suggestions.forEach(function (s) {
+            var div = document.createElement('div');
+            div.className = 'transform-opt';
+            div.innerHTML =
+                '<div class="form-check mb-0">' +
+                    '<input class="form-check-input transform-chk" type="checkbox" id="t_' + s.id + '" ' +
+                           (s.defaultOn ? 'checked' : '') + ' />' +
+                    '<label class="form-check-label fw-semibold" for="t_' + s.id + '">' + s.label + '</label>' +
+                '</div>' +
+                '<div class="text-muted small mt-1">' + s.description + '</div>' +
+                (s.preview ? '<div class="mt-1 small"><code>' + esc(raw) + '</code> → <code class="text-success">' + esc(s.preview) + '</code></div>' : '');
+            div.querySelector('.transform-chk').addEventListener('change', function () {
+                s.active = this.checked;
+                rebuildTransforms(suggestions);
+            });
+            s.active = !!s.defaultOn;
+            optContainer.appendChild(div);
+        });
+    }
+
+    rebuildTransforms(suggestions);
+}
+
+function buildTransformSuggestions(fieldType, raw, conditionType) {
+    var s = [];
+
+    if (fieldType === 'date') {
+        // Detect if it needs date conversion
+        var stdDate = tryConvertDate(raw);
+        if (stdDate && stdDate !== raw) {
+            s.push({
+                id: 'cvtdate', label: 'Convert to standard date format',
+                description: 'Stores dates as yyyy-MM-dd so they sort and compare correctly.',
+                step: { Type: 'convert_date', Value1: null, Value2: 'yyyy-MM-dd' },
+                preview: stdDate, defaultOn: true, active: true,
+            });
+        }
+    }
+
+    if (fieldType === 'line_anchor' || fieldType === 'location_anchor') {
+        // Detect prefix (the part before the value in the selected line)
+        var line   = state.selectedLine;
+        var valIdx = line.toLowerCase().indexOf(raw.toLowerCase());
+        var prefix = valIdx > 0 ? line.substring(0, valIdx).trimEnd() : '';
+        if (prefix) {
+            s.push({
+                id: 'rmpfx', label: 'Remove prefix "' + prefix + '"',
+                description: 'Strips the leading label text, leaving only the value (e.g. removes "FOR " from "FOR 061-827-9465").',
+                step: { Type: 'remove_prefix', Value1: prefix, Value2: null },
+                preview: raw, defaultOn: true, active: true,
+            });
+        }
+        s.push({
+            id: 'trim', label: 'Trim extra spaces',
+            description: 'Removes any leading or trailing whitespace.',
+            step: { Type: 'trim', Value1: null, Value2: null },
+            preview: raw.trim(), defaultOn: true, active: true,
+        });
+    }
+
+    if (fieldType === 'skip') {
+        // No transforms needed for skip rules
+    }
+
+    if (fieldType === 'string') {
+        // Trim is always safe
+        if (raw !== raw.trim()) {
+            s.push({
+                id: 'trim', label: 'Trim extra spaces',
+                description: 'Removes leading/trailing whitespace.',
+                step: { Type: 'trim', Value1: null, Value2: null },
+                preview: raw.trim(), defaultOn: true, active: true,
+            });
+        }
+    }
+
+    // Join adjacent lines — offered for string, line_anchor, location_anchor
+    // when there is a next or previous line available
+    if (fieldType === 'string' || fieldType === 'line_anchor' || fieldType === 'location_anchor') {
+        var idx      = typeof state.selectedLineIdx === 'number' ? state.selectedLineIdx : -1;
+        var nextLine = idx >= 0 && idx + 1 < PDF_LINES.length ? PDF_LINES[idx + 1].trim() : '';
+        var prevLine = idx > 0 ? PDF_LINES[idx - 1].trim() : '';
+
+        if (nextLine) {
+            s.push({
+                id: 'joinnext', label: 'Join with next line',
+                description: 'Appends the line immediately below the matched line. Use when a value spans two rows (e.g. a long address or description).',
+                step: { Type: 'join_next_line', Value1: ' ', Value2: null },
+                preview: raw.trimEnd() + ' ' + nextLine,
+                defaultOn: false, active: false,
+            });
+        }
+        if (prevLine) {
+            s.push({
+                id: 'joinprev', label: 'Join with previous line',
+                description: 'Prepends the line immediately above the matched line. Use when the first part of a value appears on the row before.',
+                step: { Type: 'join_prev_line', Value1: ' ', Value2: null },
+                preview: prevLine + ' ' + raw.trimStart(),
+                defaultOn: false, active: false,
+            });
+        }
+    }
+
+    return s;
+}
+
+function rebuildTransforms(suggestions) {
+    state.transforms = suggestions
+        .filter(function (s) { return s.active && s.step; })
+        .map(function (s) { return s.step; });
+    updateFinalPreview();
+}
+
+function updateFinalPreview() {
+    var val = state.extractedValue;
+
+    // Apply transforms client-side for preview
+    state.transforms.forEach(function (t) {
+        val = applyTransformClient(val, t);
+    });
+    state.finalValue = val;
+
+    document.getElementById('finalValuePreview').textContent = val || '(empty)';
+
+    var warn = document.getElementById('previewWarning');
+    warn.style.display = (state.fieldDef.fieldType === 'date' && val === state.extractedValue && val.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/)) ? '' : 'none';
+}
+
+function applyTransformClient(val, step) {
+    if (!step || !step.Type) return val;
+    switch (step.Type) {
+        case 'remove_prefix':
+            if (step.Value1 && val.toLowerCase().startsWith(step.Value1.toLowerCase()))
+                return val.substring(step.Value1.length).trimStart();
+            return val;
+        case 'remove_suffix':
+            if (step.Value1 && val.toLowerCase().endsWith(step.Value1.toLowerCase()))
+                return val.substring(0, val.length - step.Value1.length).trimEnd();
+            return val;
+        case 'trim':
+            return val.trim();
+        case 'to_upper': return val.toUpperCase();
+        case 'to_lower': return val.toLowerCase();
+        case 'replace':
+            return step.Value1 ? val.split(step.Value1).join(step.Value2 || '') : val;
+        case 'convert_date':
+            return tryConvertDate(val) || val;
+        case 'join_next_line': {
+            var sep = step.Value1 != null ? step.Value1 : ' ';
+            var idx = typeof state.selectedLineIdx === 'number' ? state.selectedLineIdx : -1;
+            var nxt = idx >= 0 && idx + 1 < PDF_LINES.length ? PDF_LINES[idx + 1].trim() : '';
+            return nxt ? val.trimEnd() + sep + nxt : val;
+        }
+        case 'join_prev_line': {
+            var sep2 = step.Value1 != null ? step.Value1 : ' ';
+            var idx2 = typeof state.selectedLineIdx === 'number' ? state.selectedLineIdx : -1;
+            var prv  = idx2 > 0 ? PDF_LINES[idx2 - 1].trim() : '';
+            return prv ? prv + sep2 + val.trimStart() : val;
+        }
+        default: return val;
+    }
+}
+
+function tryConvertDate(val) {
+    // Try to parse common date formats and return yyyy-MM-dd
+    var patterns = [
+        { re: /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/, fn: function (m) {
+            var y = parseInt(m[3]) < 50 ? 2000 + parseInt(m[3]) : 1900 + parseInt(m[3]);
+            return pad(y) + '-' + pad(m[1]) + '-' + pad(m[2]); }},
+        { re: /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, fn: function (m) {
+            return pad(m[3]) + '-' + pad(m[1]) + '-' + pad(m[2]); }},
+        { re: /^(\d{4})-(\d{2})-(\d{2})$/, fn: function (m) {
+            return m[0]; }}, // already formatted
+    ];
+    // Month-name patterns
+    var months = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
+    var mnRe = /^([A-Za-z]+)\.?\s+(\d{1,2}),?\s+(\d{4})$/;
+    var mnM  = val.match(mnRe);
+    if (mnM) {
+        var mo = months[mnM[1].substring(0,3).toLowerCase()];
+        if (mo) return mnM[3] + '-' + pad(mo) + '-' + pad(mnM[2]);
+    }
+    for (var p of patterns) {
+        var m = val.match(p.re);
+        if (m) return p.fn(m);
+    }
+    return null;
+}
+
+function pad(n) { return String(n).padStart(2, '0'); }
+
+document.getElementById('step3Back').addEventListener('click', function () { goTo(2); });
+
+// ═══ SAVE ────────────────────────────────────────────────────────────────────
+
+document.getElementById('saveWizardBtn').addEventListener('click', function () {
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+
+    var fd = state.fieldDef;
+
+    // Populate hidden form
+    document.getElementById('hFieldName').value    = fd.fieldName;
+    document.getElementById('hTargetTable').value  = fd.targetTable;
+    document.getElementById('hFieldType').value    = fd.fieldType;
+    document.getElementById('hConditionType').value = state.conditionType;
+    document.getElementById('hRegexPattern').value  = state.generatedPattern;
+    document.getElementById('hTransforms').value    = state.transforms.length > 0
+        ? JSON.stringify(state.transforms) : '';
+
+    // AJAX submit via FormData
+    var form  = document.getElementById('wizardForm');
+    var token = form.querySelector('[name="__RequestVerificationToken"]').value;
+    var body  = new FormData(form);
+
+    fetch('/CarrierRules/QuickCreate', { method: 'POST', body: body })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+        var box = document.getElementById('saveResultBox');
+        box.style.display = '';
+        if (data.success) {
+            box.innerHTML =
+                '<div class="alert alert-success">' +
+                    '<strong>✓ Rule saved!</strong> ' + esc(data.message) +
+                    ' <a href="/CarrierRules/Index?carrierId=' + CARRIER_ID + '" class="alert-link ms-2">View all rules →</a>' +
+                '</div>';
+            document.getElementById('saveWizardBtn').style.display = 'none';
+        } else {
+            box.innerHTML = '<div class="alert alert-danger">⚠ ' + esc(data.message) + '</div>';
+            btn.disabled  = false;
+            btn.textContent = '✓ Save Rule';
+        }
+    })
+    .catch(function () {
+        document.getElementById('saveResultBox').innerHTML =
+            '<div class="alert alert-danger">Save failed — please try again.</div>';
+        document.getElementById('saveResultBox').style.display = '';
+        btn.disabled = false;
+        btn.textContent = '✓ Save Rule';
+    });
+});
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escapeRegex(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Init
+goTo(1);
+
+})();
+</script>
+}
