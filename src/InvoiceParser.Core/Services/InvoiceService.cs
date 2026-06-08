@@ -46,6 +46,7 @@ public class InvoiceService
     };
 
     private readonly IInvoiceRepository _repository;
+    private readonly ICarrierRuleStore _ruleStore;
     private readonly PdfTextExtractorService _pdfExtractor;
     private readonly GenericInvoiceParser _parser;
     private readonly VerizonWirelessParser _verizonParser;
@@ -59,7 +60,8 @@ public class InvoiceService
     private readonly ILogger<InvoiceService> _logger;
     private readonly IInvoicePythonAugmenter _pythonAugmenter;
 
-    public InvoiceService(IInvoiceRepository repository, PdfTextExtractorService pdfExtractor,
+    public InvoiceService(IInvoiceRepository repository, ICarrierRuleStore ruleStore,
+        PdfTextExtractorService pdfExtractor,
         GenericInvoiceParser parser, VerizonWirelessParser verizonParser,
         RuleLearningService learningService,
         AiInvoiceParser aiParser, InvoiceMLService mlService,
@@ -70,6 +72,7 @@ public class InvoiceService
         ILogger<InvoiceService> logger)
     {
         _repository = repository;
+        _ruleStore = ruleStore;
         _pdfExtractor = pdfExtractor;
         _parser = parser;
         _verizonParser = verizonParser;
@@ -114,10 +117,12 @@ public class InvoiceService
         if (rules.Count > 0)
         {
             foreach (var r in rules)
+            {
                 _logger.LogInformation("  Saving rule: Field={Field}, Pattern='{Pattern}', Table={Table}, Type={Type}",
                     r.FieldName, r.RegexPattern, r.TargetTable, r.FieldType);
-            await _repository.SaveLearnedRulesAsync(feedback.CarrierId, rules);
-            _logger.LogInformation("Saved {Count} learned rule(s) to database.", rules.Count);
+                await _ruleStore.AddRuleAsync(r);
+            }
+            _logger.LogInformation("Saved {Count} learned rule(s) to rule file.", rules.Count);
         }
         else
         {
@@ -151,7 +156,8 @@ public class InvoiceService
 
                 if (rules.Count > 0)
                 {
-                    await _repository.SaveLearnedRulesAsync(feedback.CarrierId, rules);
+                    foreach (var r in rules)
+                        await _ruleStore.AddRuleAsync(r);
                     totalRules += rules.Count;
                 }
 
@@ -213,8 +219,8 @@ public class InvoiceService
 
     private async Task<ParsePdfResult> ParseExtractedTextAsync(string text, int carrierId)
     {
-        var learnedRules = await _repository.GetRulesForCarrierAsync(carrierId);
-        _logger.LogInformation("Fetched {Count} learned rules for carrier {CarrierId}.",
+        var learnedRules = await _ruleStore.GetActiveRulesForCarrierAsync(carrierId);
+        _logger.LogInformation("Fetched {Count} rules for carrier {CarrierId} (from file store).",
             learnedRules.Count, carrierId);
 
         var carrier = await _repository.GetCarrierByIdAsync(carrierId);
@@ -425,9 +431,11 @@ public class InvoiceService
 
     public async Task<TrainingResult> TrainModelAsync()
     {
-        var invoices = await _repository.GetInvoicesWithPdfTextAsync();
-        var feedback = await _repository.GetUnprocessedFeedbackAsync();
-        var result = _mlService.Train(invoices, feedback);
+        var invoices    = await _repository.GetInvoicesWithPdfTextAsync();
+        var feedback    = await _repository.GetUnprocessedFeedbackAsync();
+        var activeRules = await _ruleStore.GetAllActiveRulesAsync();
+
+        var result = _mlService.Train(invoices, feedback, activeRules);
 
         if (result.Success && feedback.Count > 0)
         {
@@ -517,8 +525,8 @@ public class InvoiceService
         Dictionary<string, string?> confirmedFields, int carrierId)
     {
         var rules = _learningService.GenerateRules(pdfText, confirmedFields, carrierId);
-        if (rules.Count > 0)
-            await _repository.SaveLearnedRulesAsync(carrierId, rules);
+        foreach (var r in rules)
+            await _ruleStore.AddRuleAsync(r);
     }
 
     public async Task ProcessFeedbackAndLearnAsync(
@@ -606,8 +614,8 @@ public class InvoiceService
             }
         }
 
-        if (learnedRules.Count > 0)
-            await _repository.SaveLearnedRulesAsync(carrierId, learnedRules);
+        foreach (var r in learnedRules)
+            await _ruleStore.AddRuleAsync(r);
     }
 
     private static VendorParsingRule BuildChargeSkipRule(int carrierId, string noiseText)

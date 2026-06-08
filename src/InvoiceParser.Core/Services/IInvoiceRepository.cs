@@ -9,6 +9,8 @@ public interface IInvoiceRepository
     Task<Carrier?> GetCarrierByIdAsync(int id);
     Task<List<VendorParsingRule>> GetRulesForCarrierAsync(int carrierId);
     Task<List<VendorParsingRule>> GetAllRulesForCarrierAsync(int carrierId);
+    /// <summary>Returns all active rules across every carrier — used to generate ML training samples from rules.</summary>
+    Task<List<VendorParsingRule>> GetAllActiveRulesAsync();
     Task<VendorParsingRule?> GetRuleByIdAsync(int id);
     Task<VendorParsingRule> SaveRuleAsync(VendorParsingRule rule);
     Task UpdateRuleAsync(VendorParsingRule rule);

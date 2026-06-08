@@ -319,9 +319,15 @@
                             else
                             { <span class="badge bg-secondary badge-status ms-2">0 Auto</span> }
                         </h5>
-                        <button type="button" class="btn btn-sm btn-outline-success" id="addChargeRow">
-                            + Add Row
-                        </button>
+                        <div class="d-flex gap-2">
+                            <a href="/CarrierRules/Wizard?carrierId=@Model.CarrierId&section=t_charge"
+                               class="btn btn-sm btn-outline-primary" title="Open rule wizard for charge line items">
+                                ✎ Add Rule
+                            </a>
+                            <button type="button" class="btn btn-sm btn-outline-success" id="addChargeRow">
+                                + Add Row
+                            </button>
+                        </div>
                     </div>
 
                     <div class="d-flex gap-2 mb-2 align-items-center flex-wrap">
@@ -431,8 +437,10 @@
 
                     @if (Model.Charges.Count == 0)
                     {
-                        <div class="alert alert-info">
-                            No charge line items were parsed. You can add them manually using the "+ Add Row" button above.
+                        <div class="alert alert-info d-flex justify-content-between align-items-center">
+                            <span>No charge line items were parsed. You can add them manually or create a rule to teach the parser where to find them.</span>
+                            <a href="/CarrierRules/Wizard?carrierId=@Model.CarrierId&section=t_charge"
+                               class="btn btn-sm btn-outline-primary ms-3 text-nowrap">✎ Add Rule</a>
                         </div>
                     }
                     </div><!-- end chargesPane -->
@@ -443,7 +451,13 @@
                     <div class="tab-pane fade" id="usagePane" role="tabpanel" aria-labelledby="usage-tab">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h5 class="mb-0">Usage Items <span class="badge bg-info ms-1">@Model.Usages.Count</span></h5>
-                            <button type="button" class="btn btn-sm btn-outline-success" id="addUsageRow">+ Add Row</button>
+                            <div class="d-flex gap-2">
+                                <a href="/CarrierRules/Wizard?carrierId=@Model.CarrierId&section=t_usage"
+                                   class="btn btn-sm btn-outline-primary" title="Open rule wizard for usage records">
+                                    ✎ Add Rule
+                                </a>
+                                <button type="button" class="btn btn-sm btn-outline-success" id="addUsageRow">+ Add Row</button>
+                            </div>
                         </div>
 
                         <div class="input-group input-group-sm mb-2">
@@ -530,7 +544,13 @@
                     <div class="tab-pane fade" id="inventoryPane" role="tabpanel" aria-labelledby="inventory-tab">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h5 class="mb-0">Inventory <span class="badge bg-secondary ms-1">@Model.Inventories.Count</span></h5>
-                            <button type="button" class="btn btn-sm btn-outline-success" id="addInventoryRow">+ Add Row</button>
+                            <div class="d-flex gap-2">
+                                <a href="/CarrierRules/Wizard?carrierId=@Model.CarrierId&section=t_inventory"
+                                   class="btn btn-sm btn-outline-primary" title="Open rule wizard for inventory records">
+                                    ✎ Add Rule
+                                </a>
+                                <button type="button" class="btn btn-sm btn-outline-success" id="addInventoryRow">+ Add Row</button>
+                            </div>
                         </div>
 
                         <div class="input-group input-group-sm mb-2">

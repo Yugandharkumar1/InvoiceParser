@@ -39,6 +39,19 @@ public class InvoiceRepository : IInvoiceRepository
             .ThenBy(r => r.FieldName)
             .ToListAsync();
 
+    public async Task<List<VendorParsingRule>> GetAllActiveRulesAsync()
+        => await _db.VendorParsingRules
+            .Where(r => r.IsActive
+                     && r.TargetTable == "t_invoice"          // summary fields only for now
+                     && r.FieldType  != "skip"                // skip rules produce no value
+                     && r.FieldType  != "line_anchor"
+                     && r.FieldType  != "location_anchor"
+                     && !string.IsNullOrEmpty(r.RegexPattern) // must have a pattern to apply
+                     && (r.SuccessCount >= r.FailCount))      // only rules that work more than they fail
+            .OrderBy(r => r.CarrierId)
+            .ThenBy(r => r.FieldName)
+            .ToListAsync();
+
     public async Task<VendorParsingRule?> GetRuleByIdAsync(int id)
         => await _db.VendorParsingRules.FindAsync(id);
 

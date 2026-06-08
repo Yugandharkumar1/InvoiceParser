@@ -12,6 +12,7 @@ namespace InvoiceParser.Web.Controllers;
 public class CarrierRulesController : Controller
 {
     private readonly IInvoiceRepository _repo;
+    private readonly ICarrierRuleStore _ruleStore;
     private readonly GenericInvoiceParser _parser;
     private readonly PdfTextExtractorService _pdfExtractor;
     private readonly ILogger<CarrierRulesController> _logger;
@@ -26,6 +27,7 @@ public class CarrierRulesController : Controller
     private static readonly string[] KnownChargeFields =
     {
         "line_number", "location", "charge_desc", "amount",
+        "section_start", "section_end",
     };
 
     private static readonly string[] KnownUsageFields =
@@ -62,6 +64,8 @@ public class CarrierRulesController : Controller
         ["Charge Amount"]       = new("amount",            "t_charge",  "decimal",         "The dollar amount for this charge line."),
         ["Line Number"]         = new("line_number",       "t_charge",  "line_anchor",     "Sets the phone/circuit number context for the charges that follow (e.g. 'FOR 061-827-9465')."),
         ["Location"]            = new("location",          "t_charge",  "location_anchor", "Sets the service address context for charges that follow (e.g. 'Service at: BEND, OR')."),
+        ["Section Start"]       = new("section_start",     "t_charge",  "section_start",   "When a line matches this condition, begin collecting charge rows below it (e.g. 'Charges For', 'Current Activity')."),
+        ["Section End"]         = new("section_end",       "t_charge",  "section_end",     "When a line matches this condition, stop collecting charges (e.g. 'Subtotal', 'Total Due', 'BALANCE DUE')."),
         ["Skip Charge Line"]    = new("skip",              "t_charge",  "skip",            "Lines matching this rule will be completely ignored during charge extraction."),
 
         // ── Usage Records (t_usage) ──────────────────────────────────────────
@@ -83,11 +87,13 @@ public class CarrierRulesController : Controller
     };
 
     public CarrierRulesController(IInvoiceRepository repo,
+        ICarrierRuleStore ruleStore,
         GenericInvoiceParser parser,
         PdfTextExtractorService pdfExtractor,
         ILogger<CarrierRulesController> logger)
     {
         _repo = repo;
+        _ruleStore = ruleStore;
         _parser = parser;
         _pdfExtractor = pdfExtractor;
         _logger = logger;
@@ -99,7 +105,7 @@ public class CarrierRulesController : Controller
         var carrier = await _repo.GetCarrierByIdAsync(carrierId);
         if (carrier == null) return NotFound();
 
-        var rules = await _repo.GetAllRulesForCarrierAsync(carrierId);
+        var rules = await _ruleStore.GetAllRulesForCarrierAsync(carrierId);
         ViewBag.Carrier = carrier;
         ViewBag.CarrierId = carrierId;
         return View(rules);
@@ -175,7 +181,7 @@ public class CarrierRulesController : Controller
     // GET /CarrierRules/Edit/{id}
     public async Task<IActionResult> Edit(int id)
     {
-        var rule = await _repo.GetRuleByIdAsync(id);
+        var rule = await _ruleStore.GetRuleByIdAsync(id);
         if (rule == null) return NotFound();
 
         var carrier = await _repo.GetCarrierByIdAsync(rule.CarrierId);
@@ -210,7 +216,7 @@ public class CarrierRulesController : Controller
         }
 
         var rule = vm.Id > 0
-            ? (await _repo.GetRuleByIdAsync(vm.Id))!
+            ? (await _ruleStore.GetRuleByIdAsync(vm.Id))!
             : new VendorParsingRule { CarrierId = vm.CarrierId };
 
         if (rule == null) return NotFound();
@@ -218,9 +224,9 @@ public class CarrierRulesController : Controller
         MapFromViewModel(vm, rule);
 
         if (vm.Id > 0)
-            await _repo.UpdateRuleAsync(rule);
+            await _ruleStore.UpdateRuleAsync(rule);
         else
-            await _repo.SaveRuleAsync(rule);
+            await _ruleStore.AddRuleAsync(rule);
 
         TempData["SuccessMessage"] = $"Rule '{rule.FieldName}' saved.";
         return RedirectToAction("Index", new { carrierId = rule.CarrierId });
@@ -231,10 +237,10 @@ public class CarrierRulesController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Delete(int id)
     {
-        var rule = await _repo.GetRuleByIdAsync(id);
+        var rule = await _ruleStore.GetRuleByIdAsync(id);
         if (rule == null) return NotFound();
         var carrierId = rule.CarrierId;
-        await _repo.DeleteRuleAsync(id);
+        await _ruleStore.DeleteRuleAsync(id);
         TempData["SuccessMessage"] = "Rule deleted.";
         return RedirectToAction("Index", new { carrierId });
     }
@@ -244,10 +250,10 @@ public class CarrierRulesController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Toggle(int id)
     {
-        var rule = await _repo.GetRuleByIdAsync(id);
+        var rule = await _ruleStore.GetRuleByIdAsync(id);
         if (rule == null) return NotFound();
         rule.IsActive = !rule.IsActive;
-        await _repo.UpdateRuleAsync(rule);
+        await _ruleStore.UpdateRuleAsync(rule);
         return RedirectToAction("Index", new { carrierId = rule.CarrierId });
     }
 
@@ -344,7 +350,7 @@ public class CarrierRulesController : Controller
         MapFromViewModel(vm, rule);
         rule.IsActive = true;
 
-        await _repo.SaveRuleAsync(rule);
+        await _ruleStore.AddRuleAsync(rule);
 
         return Json(new { success = true, message = $"Rule for '{rule.FieldName}' saved." });
     }
@@ -483,6 +489,8 @@ public class CarrierRulesController : Controller
             new { Value = "skip",            Text = "Skip (ignore matching lines)" },
             new { Value = "line_anchor",     Text = "Line Anchor (sets Line Number context)" },
             new { Value = "location_anchor", Text = "Location Anchor (sets Location context)" },
+            new { Value = "section_start",   Text = "Section Start (begin collecting charges here)" },
+            new { Value = "section_end",     Text = "Section End (stop collecting charges here)" },
         }, "Value", "Text");
 
         ViewBag.KnownFields = KnownSummaryFields
@@ -496,17 +504,18 @@ public class CarrierRulesController : Controller
         // Pre-serialize to JSON so Razor can inline it directly without dynamic binding
         ViewBag.TransformTypesJson = JsonSerializer.Serialize(new[]
         {
-            new { value = "remove_prefix",   label = "Remove Prefix",           hasV1 = true,  hasV2 = false, v1label = "Prefix to remove" },
-            new { value = "remove_suffix",   label = "Remove Suffix",           hasV1 = true,  hasV2 = false, v1label = "Suffix to remove" },
-            new { value = "replace",         label = "Replace Text",            hasV1 = true,  hasV2 = true,  v1label = "Find text" },
-            new { value = "trim",            label = "Trim Whitespace",         hasV1 = false, hasV2 = false, v1label = "" },
-            new { value = "extract_between", label = "Extract Between",         hasV1 = true,  hasV2 = true,  v1label = "Start marker" },
-            new { value = "regex_extract",   label = "Regex Extract (Grp 1)",   hasV1 = true,  hasV2 = false, v1label = "Regex pattern" },
-            new { value = "convert_date",    label = "Convert Date Format",     hasV1 = true,  hasV2 = true,  v1label = "Input format (e.g. MM/dd/yy)" },
-            new { value = "to_upper",        label = "To Upper Case",           hasV1 = false, hasV2 = false, v1label = "" },
-            new { value = "to_lower",        label = "To Lower Case",           hasV1 = false, hasV2 = false, v1label = "" },
-            new { value = "join_next_line",  label = "Join Next Line",          hasV1 = true,  hasV2 = false, v1label = "Separator (default: space)" },
-            new { value = "join_prev_line",  label = "Join Previous Line",      hasV1 = true,  hasV2 = false, v1label = "Separator (default: space)" },
+            new { value = "remove_prefix",   label = "Remove Prefix",                    hasV1 = true,  hasV2 = false, v1label = "Prefix to remove" },
+            new { value = "remove_suffix",   label = "Remove Suffix",                    hasV1 = true,  hasV2 = false, v1label = "Suffix to remove" },
+            new { value = "replace",         label = "Replace Text",                     hasV1 = true,  hasV2 = true,  v1label = "Find text" },
+            new { value = "regex_remove",    label = "Remove Pattern (Regex)",           hasV1 = true,  hasV2 = false, v1label = "Regex pattern to erase (e.g. \\s*\\d{1,2}/\\d{1,2}/\\d{4})" },
+            new { value = "trim",            label = "Trim Whitespace",                  hasV1 = false, hasV2 = false, v1label = "" },
+            new { value = "extract_between", label = "Extract Between",                  hasV1 = true,  hasV2 = true,  v1label = "Start marker" },
+            new { value = "regex_extract",   label = "Regex Extract (Capture Group 1)", hasV1 = true,  hasV2 = false, v1label = "Regex pattern" },
+            new { value = "convert_date",    label = "Convert Date Format",              hasV1 = true,  hasV2 = true,  v1label = "Input format (e.g. MM/dd/yy)" },
+            new { value = "to_upper",        label = "To Upper Case",                    hasV1 = false, hasV2 = false, v1label = "" },
+            new { value = "to_lower",        label = "To Lower Case",                    hasV1 = false, hasV2 = false, v1label = "" },
+            new { value = "join_next_line",  label = "Join Next Line",                   hasV1 = true,  hasV2 = false, v1label = "Separator (default: space)" },
+            new { value = "join_prev_line",  label = "Join Previous Line",               hasV1 = true,  hasV2 = false, v1label = "Separator (default: space)" },
         });
     }
 }

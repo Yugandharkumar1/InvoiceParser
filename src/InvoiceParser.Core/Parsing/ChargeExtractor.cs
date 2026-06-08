@@ -64,24 +64,42 @@ public static class ChargeExtractor
         "PAYMENT", "THANK YOU", "ADJUSTMENT",
     };
 
+    /// <param name="chargeRules">
+    /// All active <c>t_charge</c> rules for this carrier.  The extractor categorises them
+    /// internally: <c>line_anchor</c>, <c>location_anchor</c>, <c>section_start</c>,
+    /// <c>section_end</c>, and <c>skip</c>.
+    /// </param>
     public static void Extract(string pdfText, IList<ParsedCharge> charges,
-        IList<VendorParsingRule>? anchorRules = null)
+        IList<VendorParsingRule>? chargeRules = null)
     {
         var lines = pdfText.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
 
-        // Pre-compute anchor rule data so we don't re-allocate per line
-        var lineAnchorRules = anchorRules?
+        // ── Categorise rules once ─────────────────────────────────────────────
+        var lineAnchorRules = chargeRules?
             .Where(r => r.IsActive && r.TargetTable == "t_charge" &&
                         (r.FieldType == "line_anchor" || r.FieldName == "line_number"))
             .ToList();
-        var locationAnchorRules = anchorRules?
+        var locationAnchorRules = chargeRules?
             .Where(r => r.IsActive && r.TargetTable == "t_charge" &&
                         (r.FieldType == "location_anchor" || r.FieldName == "location"))
             .ToList();
-        bool hasAnchorRules = (lineAnchorRules?.Count > 0) || (locationAnchorRules?.Count > 0);
+        // Section-boundary rules: open or close the "we are inside a charge section" gate.
+        var sectionStartRules = chargeRules?
+            .Where(r => r.IsActive && r.TargetTable == "t_charge" && r.FieldType == "section_start")
+            .ToList();
+        var sectionEndRules = chargeRules?
+            .Where(r => r.IsActive && r.TargetTable == "t_charge" && r.FieldType == "section_end")
+            .ToList();
+        // Skip rules evaluated at extraction time against the raw description — charge never added.
+        var lineSkipRules = chargeRules?
+            .Where(r => r.IsActive && r.TargetTable == "t_charge" && r.FieldType == "skip")
+            .ToList();
 
-        string? currentSection = null;
-        string? currentLine = null;
+        bool hasAnchorRules     = (lineAnchorRules?.Count > 0) || (locationAnchorRules?.Count > 0);
+        bool hasSectionRules    = (sectionStartRules?.Count > 0) || (sectionEndRules?.Count > 0);
+
+        string? currentSection  = null;
+        string? currentLine     = null;
         string? currentLocation = null;
 
         foreach (var rawLine in lines)
@@ -91,7 +109,7 @@ public static class ChargeExtractor
 
             if (Regex.IsMatch(line, @"^Circuit\s*ID\s*:", RegexOptions.IgnoreCase)) continue;
 
-            // Configurable anchor rules — run before hard-coded patterns
+            // ── Configurable anchor rules ─────────────────────────────────────
             if (hasAnchorRules)
             {
                 if (TryApplyAnchorRule(line, lineAnchorRules, out var extractedLine, pdfText))
@@ -140,6 +158,33 @@ public static class ChargeExtractor
                 if (taxHeaderMatch.Success) continue;
             }
 
+            // ── Configurable section-end rules (checked before section-start) ──
+            // When the carrier has defined an end boundary, close the gate the moment
+            // the matching line is seen (e.g. "Subtotal", "Total Due", etc.).
+            if (currentSection != null && sectionEndRules?.Count > 0)
+            {
+                if (sectionEndRules.Any(r =>
+                        ConditionEvaluator.Evaluate(line, r.ConditionType, r.RegexPattern)))
+                {
+                    currentSection = null;
+                    continue;
+                }
+            }
+
+            // ── Configurable section-start rules ─────────────────────────────
+            // Carrier-specific headers that aren't in the hard-coded list (e.g.
+            // "Charges For Service", "Current Activity", "Service Detail").
+            if (sectionStartRules?.Count > 0)
+            {
+                if (sectionStartRules.Any(r =>
+                        ConditionEvaluator.Evaluate(line, r.ConditionType, r.RegexPattern)))
+                {
+                    currentSection = "configured";
+                    continue;
+                }
+            }
+
+            // ── Hard-coded section headers (backward-compatible fallback) ──────
             var isSectionHeader = false;
             foreach (var header in SectionHeaders)
             {
@@ -177,15 +222,23 @@ public static class ChargeExtractor
             desc = UnitPricingPattern.Replace(desc, "").Trim();
             if (string.IsNullOrWhiteSpace(desc) || desc.Length < 3) continue;
 
+            // ── Configurable skip rules (evaluated at line level) ─────────────
+            // Checked here — before the charge is added — so unwanted lines never
+            // become charge objects in the first place.
+            if (lineSkipRules?.Count > 0 &&
+                lineSkipRules.Any(r =>
+                    ConditionEvaluator.Evaluate(desc, r.ConditionType, r.RegexPattern)))
+                continue;
+
             var charge = new ParsedCharge
             {
                 ChargeDescription = desc,
-                Line = currentLine,
-                Location = currentLocation,
+                Line              = currentLine,
+                Location          = currentLocation,
             };
 
             var amountToken = match.Groups[2].Value.Trim();
-            var explicitCr = match.Groups[3].Success;
+            var explicitCr  = match.Groups[3].Success;
             var parenCredit = amountToken.TrimStart().StartsWith("(");
             if (MonetaryParser.TryParse(amountToken, out var amt))
             {

@@ -98,6 +98,98 @@ public class TrainingDataBuilder
         return samples;
     }
 
+    /// <summary>
+    /// Generates training samples by running each active <see cref="VendorParsingRule"/> against
+    /// the PDF text of every saved invoice that belongs to the same carrier.
+    /// Only rules that have proven reliable (SuccessCount >= FailCount) and target t_invoice
+    /// summary fields are used, so we don't pollute the model with bad extractions.
+    /// </summary>
+    public List<FieldTrainingData> BuildFromRules(
+        List<VendorParsingRule> activeRules,
+        List<Invoice> invoicesWithText)
+    {
+        var samples = new List<FieldTrainingData>();
+        if (activeRules.Count == 0 || invoicesWithText.Count == 0) return samples;
+
+        // Group invoices by carrier so we only test each rule against its own carrier's PDFs
+        var invoicesByCarrier = invoicesWithText
+            .Where(i => !string.IsNullOrWhiteSpace(i.PdfText))
+            .GroupBy(i => i.CarrierId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        foreach (var rule in activeRules)
+        {
+            if (!invoicesByCarrier.TryGetValue(rule.CarrierId, out var carrierInvoices))
+                continue; // no saved invoices for this carrier yet
+
+            foreach (var invoice in carrierInvoices)
+            {
+                var pdfText = invoice.PdfText!;
+                string? extractedValue = null;
+
+                try
+                {
+                    if (IsRegexCondition(rule.ConditionType))
+                    {
+                        // regex_match: capture group 1 is the value
+                        var m = Regex.Match(pdfText, rule.RegexPattern,
+                            RegexOptions.Singleline | RegexOptions.IgnoreCase);
+                        if (m.Success)
+                            extractedValue = m.Groups.Count > 1 ? m.Groups[1].Value.Trim() : m.Value.Trim();
+                    }
+                    else
+                    {
+                        // Line-level conditions (contains, starts_with, equals, …)
+                        foreach (var line in pdfText.Split('\n'))
+                        {
+                            var trimmed = line.Trim();
+                            if (!EvaluateLineCondition(trimmed, rule.ConditionType, rule.RegexPattern))
+                                continue;
+                            extractedValue = trimmed;
+                            break;
+                        }
+                    }
+                }
+                catch { continue; }
+
+                if (string.IsNullOrWhiteSpace(extractedValue)) continue;
+
+                // Find the value in the PDF text and grab surrounding context
+                var contexts = FindAllContexts(pdfText, extractedValue);
+                foreach (var (context, _) in contexts)
+                {
+                    samples.Add(new FieldTrainingData
+                    {
+                        Context = NormalizeContext(context),
+                        Label   = rule.FieldName,
+                    });
+                }
+            }
+        }
+
+        return samples;
+    }
+
+    private static bool IsRegexCondition(string? conditionType)
+        => string.IsNullOrEmpty(conditionType)
+        || conditionType.Equals("regex_match", StringComparison.OrdinalIgnoreCase);
+
+    private static bool EvaluateLineCondition(string line, string conditionType, string pattern)
+    {
+        return conditionType.ToLowerInvariant() switch
+        {
+            "contains"          => line.Contains(pattern, StringComparison.OrdinalIgnoreCase),
+            "does_not_contain"  => !line.Contains(pattern, StringComparison.OrdinalIgnoreCase),
+            "starts_with"       => line.StartsWith(pattern, StringComparison.OrdinalIgnoreCase),
+            "ends_with"         => line.EndsWith(pattern, StringComparison.OrdinalIgnoreCase),
+            "equals"            => line.Equals(pattern, StringComparison.OrdinalIgnoreCase),
+            "not_equals"        => !line.Equals(pattern, StringComparison.OrdinalIgnoreCase),
+            "is_empty"          => string.IsNullOrWhiteSpace(line),
+            "is_not_empty"      => !string.IsNullOrWhiteSpace(line),
+            _                   => false,
+        };
+    }
+
     public List<FieldTrainingData> BuildFromFeedback(List<InvoiceFeedback> feedbackRecords)
     {
         var samples = new List<FieldTrainingData>();

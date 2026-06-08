@@ -59,7 +59,8 @@ public class InvoiceMLService
         }
     }
 
-    public TrainingResult Train(List<Invoice> invoices, List<InvoiceFeedback>? feedback = null)
+    public TrainingResult Train(List<Invoice> invoices, List<InvoiceFeedback>? feedback = null,
+        List<VendorParsingRule>? activeRules = null)
     {
         var invoicesWithText = invoices.Where(i => !string.IsNullOrWhiteSpace(i.PdfText)).ToList();
 
@@ -80,12 +81,28 @@ public class InvoiceMLService
         {
             _logger.LogInformation("Building training data from {Count} invoices...", invoicesWithText.Count);
             var trainingData = _dataBuilder.BuildFromInvoices(invoicesWithText);
+            int feedbackSampleCount = 0;
+            int ruleSampleCount     = 0;
 
             if (feedback != null && feedback.Count > 0)
             {
                 var feedbackSamples = _dataBuilder.BuildFromFeedback(feedback);
-                _logger.LogInformation("Added {Count} training samples from user feedback.", feedbackSamples.Count);
+                feedbackSampleCount = feedbackSamples.Count;
+                _logger.LogInformation("Added {Count} training samples from user feedback.", feedbackSampleCount);
                 trainingData.AddRange(feedbackSamples);
+            }
+
+            if (activeRules != null && activeRules.Count > 0)
+            {
+                var ruleSamples = _dataBuilder.BuildFromRules(activeRules, invoicesWithText);
+                ruleSampleCount = ruleSamples.Count;
+                if (ruleSampleCount > 0)
+                {
+                    _logger.LogInformation(
+                        "Added {Count} training samples generated from {RuleCount} active extraction rules.",
+                        ruleSampleCount, activeRules.Count);
+                    trainingData.AddRange(ruleSamples);
+                }
             }
 
             if (trainingData.Count < 20)
@@ -134,10 +151,15 @@ public class InvoiceMLService
 
             LastTrainedInvoiceCount = invoicesWithText.Count;
 
+            var extras = new List<string>();
+            if (feedbackSampleCount > 0) extras.Add($"{feedbackSampleCount} from feedback");
+            if (ruleSampleCount     > 0) extras.Add($"{ruleSampleCount} from extraction rules");
+            var extrasMsg = extras.Count > 0 ? $" (including {string.Join(", ", extras)})" : "";
+
             return new TrainingResult
             {
                 Success = true,
-                Message = $"Model trained successfully on {trainingData.Count} samples from {invoicesWithText.Count} invoices.",
+                Message = $"Model trained on {trainingData.Count} samples from {invoicesWithText.Count} invoices{extrasMsg}.",
                 Accuracy = metrics.MacroAccuracy,
                 SampleCount = trainingData.Count,
                 InvoiceCount = invoicesWithText.Count,

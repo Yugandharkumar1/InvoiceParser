@@ -54,19 +54,20 @@ public class GenericInvoiceParser
             .ThenBy(r => r.SortOrder)
             .ToList();
 
-        var learnedSkipPatterns = activeRules
-            .Where(r => r.TargetTable == "t_charge" && r.FieldType == "skip")
+        // All active t_charge rules are forwarded to ChargeExtractor which categorises
+        // them internally (anchors, section_start, section_end, skip, cleanup transforms).
+        var allChargeRules = activeRules
+            .Where(r => r.TargetTable == "t_charge")
+            .ToList();
+
+        // learnedSkipPatterns is still used by CleanChargeDescriptions for the Verizon path
+        var learnedSkipPatterns = allChargeRules
+            .Where(r => r.FieldType == "skip")
             .Select(r => r.RegexPattern)
             .ToList();
 
-        var anchorRules = activeRules
-            .Where(r => r.TargetTable == "t_charge" &&
-                        (r.FieldType == "line_anchor" || r.FieldType == "location_anchor" ||
-                         r.FieldName == "line_number" || r.FieldName == "location"))
-            .ToList();
-
         var normalized = InvoiceTextNormalizer.Normalize(pdfText);
-        var result = SmartParse(normalized, anchorRules);
+        var result = SmartParse(normalized, allChargeRules);
 
         VendorParsingPluginRegistry.ApplyAll(carrierCode, normalized, result);
 
@@ -103,23 +104,26 @@ public class GenericInvoiceParser
         {
             try
             {
-                string? value = null;
-
+                string? value    = null;
                 string? matchedLine = null;
+
                 if (IsRegexCondition(rule.ConditionType))
                 {
-                    // Legacy + regex_match: match pattern against full text, extract group 1
+                    // regex_match: scan the full text for the pattern.
+                    // Use capture group 1 when present; fall back to the full match so that
+                    // patterns without explicit groups still produce a value.
+                    if (string.IsNullOrWhiteSpace(rule.RegexPattern)) continue;
                     var match = Regex.Match(pdfText, rule.RegexPattern,
                         RegexOptions.Singleline | RegexOptions.IgnoreCase);
-                    if (match.Success && match.Groups.Count > 1)
+                    if (match.Success)
                     {
-                        value       = match.Groups[1].Value.Trim();
+                        value       = (match.Groups.Count > 1 ? match.Groups[1].Value : match.Value).Trim();
                         matchedLine = match.Value.Trim();
                     }
                 }
                 else
                 {
-                    // Structured condition: evaluate per-line
+                    // Structured condition: evaluate per line, use the matching line as the raw value.
                     foreach (var line in textLines)
                     {
                         var trimmed = line.Trim();
@@ -133,7 +137,7 @@ public class GenericInvoiceParser
 
                 if (string.IsNullOrWhiteSpace(value)) continue;
 
-                // Apply transformations — pass pdfText + matchedLine for join_next/prev_line support
+                // Apply transform pipeline — forward pdfText + matchedLine for join_next/prev_line
                 var steps = TransformPipeline.Deserialize(rule.TransformationsJson);
                 if (steps != null)
                     value = TransformPipeline.Apply(value, steps, pdfText, matchedLine);
@@ -144,20 +148,77 @@ public class GenericInvoiceParser
             catch { /* skip invalid rule */ }
         }
 
+        // ── t_charge rules ────────────────────────────────────────────────────
+        // Two distinct behaviours depending on whether the rule has transforms:
+        //
+        //  A) CLEANUP path  — rule has TransformationsJson
+        //     Applies the transform pipeline to already-extracted charge descriptions
+        //     where the condition matches.  This is what wizard-created rules produce
+        //     (e.g. regex_remove to strip dates from descriptions).
+        //
+        //  B) ADD-NEW-CHARGES path — rule has no transforms
+        //     Legacy behaviour: the RegexPattern must contain two capture groups
+        //     (description + amount) and is applied against the full PDF text to inject
+        //     extra charge rows that the built-in extractor missed.
+        //
+        // The overlay only processes value-extraction rules (string/decimal/date transforms).
+        // Boundary markers (section_start, section_end) and structural rules (anchors, skip)
+        // are handled entirely inside ChargeExtractor.Extract and must be excluded here.
         var chargeRules = activeRules
-            .Where(r => r.TargetTable == "t_charge" && r.FieldType != "skip"
-                     && r.FieldType != "line_anchor" && r.FieldType != "location_anchor"
-                     && r.FieldName != "line_number" && r.FieldName != "location")
+            .Where(r => r.TargetTable == "t_charge"
+                     && r.FieldType != "skip"
+                     && r.FieldType != "line_anchor"  && r.FieldType != "location_anchor"
+                     && r.FieldType != "section_start" && r.FieldType != "section_end"
+                     && r.FieldName != "line_number"  && r.FieldName != "location")
             .ToList();
 
         foreach (var rule in chargeRules)
         {
             try
             {
-                var matches = Regex.Matches(pdfText, rule.RegexPattern,
-                    RegexOptions.Singleline | RegexOptions.IgnoreCase);
-                foreach (Match match in matches)
+                var steps = TransformPipeline.Deserialize(rule.TransformationsJson);
+
+                // ── A: Cleanup path ──────────────────────────────────────────
+                if (steps != null && steps.Count > 0)
                 {
+                    foreach (var charge in result.Charges)
+                    {
+                        if (string.IsNullOrWhiteSpace(charge.ChargeDescription)) continue;
+
+                        // Evaluate the condition against the extracted charge description.
+                        bool conditionMet;
+                        if (IsRegexCondition(rule.ConditionType))
+                        {
+                            // An empty pattern means "apply to all"
+                            conditionMet = string.IsNullOrWhiteSpace(rule.RegexPattern)
+                                || Regex.IsMatch(charge.ChargeDescription,
+                                       rule.RegexPattern, RegexOptions.IgnoreCase);
+                        }
+                        else
+                        {
+                            conditionMet = ConditionEvaluator.Evaluate(
+                                charge.ChargeDescription, rule.ConditionType, rule.RegexPattern);
+                        }
+
+                        if (!conditionMet) continue;
+
+                        var cleaned = TransformPipeline.Apply(
+                            charge.ChargeDescription, steps,
+                            pdfText, charge.ChargeDescription);
+
+                        if (!string.IsNullOrWhiteSpace(cleaned))
+                            charge.ChargeDescription = cleaned;
+                    }
+                    continue; // done with this rule — do not fall through to ADD path
+                }
+
+                // ── B: Add-new-charges path (legacy) ────────────────────────
+                if (string.IsNullOrWhiteSpace(rule.RegexPattern)) continue;
+                var rawMatches = Regex.Matches(pdfText, rule.RegexPattern,
+                    RegexOptions.Singleline | RegexOptions.IgnoreCase);
+                foreach (Match match in rawMatches)
+                {
+                    // Require at least two capture groups: description (1) + amount (2)
                     if (match.Groups.Count < 3) continue;
 
                     var charge = new ParsedCharge
@@ -166,8 +227,8 @@ public class GenericInvoiceParser
                     };
 
                     if (decimal.TryParse(
-                        match.Groups[2].Value.Trim().Replace("$", "").Replace(",", ""),
-                        NumberStyles.Any, CultureInfo.InvariantCulture, out var amount))
+                            match.Groups[2].Value.Trim().Replace("$", "").Replace(",", ""),
+                            NumberStyles.Any, CultureInfo.InvariantCulture, out var amount))
                     {
                         charge.Amount = amount;
                     }
@@ -175,7 +236,7 @@ public class GenericInvoiceParser
                     result.Charges.Add(charge);
                 }
             }
-            catch { /* skip invalid regex */ }
+            catch { /* skip invalid rule */ }
         }
     }
 
@@ -250,19 +311,22 @@ public class GenericInvoiceParser
     /// Extracts only charge line items from the PDF text (no summary fields).
     /// Use as a fallback when ML/AI produces summary fields but no charges.
     /// </summary>
+    /// <param name="chargeRules">
+    /// All active <c>t_charge</c> rules for this carrier (anchors, section boundaries, skip, transforms).
+    /// </param>
     public List<ParsedCharge> ExtractChargesFromText(string pdfText,
-        IList<Entities.VendorParsingRule>? anchorRules = null)
+        IList<Entities.VendorParsingRule>? chargeRules = null)
     {
         var normalized = InvoiceTextNormalizer.Normalize(pdfText);
         var result = new ParsedInvoiceResult();
-        ChargeExtractor.Extract(normalized, result.Charges, anchorRules);
+        ChargeExtractor.Extract(normalized, result.Charges, chargeRules);
         ChargeExtractor.DeduplicateCharges(result.Charges);
         AssociateCircuitIds(normalized, result);
         return result.Charges;
     }
 
     private static ParsedInvoiceResult SmartParse(string normalizedText,
-        IList<Entities.VendorParsingRule>? anchorRules = null)
+        IList<Entities.VendorParsingRule>? chargeRules = null)
     {
         var result = new ParsedInvoiceResult();
 
@@ -273,7 +337,7 @@ public class GenericInvoiceParser
 
         TotalExtractor.ExtractEndBal(normalizedText, result.SummaryFields);
 
-        ChargeExtractor.Extract(normalizedText, result.Charges, anchorRules);
+        ChargeExtractor.Extract(normalizedText, result.Charges, chargeRules);
 
         return result;
     }

@@ -186,6 +186,38 @@
             <!-- Transform options -->
             <div id="transformOptions"></div>
 
+            <!-- Manual regex-remove section (shown for string fields when user wants to add custom noise removal) -->
+            <div id="customRemoveSection" style="display:none;" class="border rounded p-3 mb-3 bg-light">
+                <p class="fw-semibold mb-2 small">➕ Remove a custom pattern</p>
+                <p class="text-muted small mb-2">
+                    Enter a regex pattern that matches the <strong>noise text</strong> you want erased from the value.
+                    The pattern is applied to every captured charge description — if it doesn't match, the value is left unchanged.
+                </p>
+                <div class="mb-2">
+                    <label class="form-label small fw-semibold">Common patterns to try:</label>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm preset-pattern"
+                                data-pattern="\s*\d{1,2}\/\d{1,2}\/\d{2,4}">📅 MM/DD/YYYY date</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm preset-pattern"
+                                data-pattern="\s*\d{4}-\d{2}-\d{2}">📅 YYYY-MM-DD date</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm preset-pattern"
+                                data-pattern="\s*\d{1,2}\/\d{1,2}\s*[-–]\s*\d{1,2}\/\d{1,2}">📅 MM/DD–MM/DD period</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm preset-pattern"
+                                data-pattern="\s*\(\s*\d{1,2}\/\d{1,2}\s*[-–]\s*\d{1,2}\/\d{1,2}\s*\)">📅 (MM/DD–MM/DD)</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm preset-pattern"
+                                data-pattern="\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\.?\s+\d{1,2},?\s+\d{4}">📅 Month DD, YYYY</button>
+                    </div>
+                </div>
+                <div class="input-group">
+                    <input type="text" id="customPatternInput" class="form-control font-monospace"
+                           placeholder="e.g. \s*\d{1,2}\/\d{1,2}\/\d{4}" />
+                    <button type="button" class="btn btn-primary" id="addCustomPatternBtn">Add Remove Step</button>
+                </div>
+                <div class="mt-2 small text-muted">
+                    Preview: <code id="customPatternPreview">(type a pattern above to see a preview)</code>
+                </div>
+            </div>
+
             <!-- Preview -->
             <div class="mt-3">
                 <div class="d-flex align-items-center gap-3 mb-2">
@@ -514,7 +546,7 @@ function onLineSelected(line) {
     document.getElementById('selectedLinePanel').style.display = '';
     document.getElementById('step2Next').disabled = false;
 
-    // Pre-select condition type for anchors/skip
+    // Pre-select condition type for anchors/skip/section boundaries
     if (ft === 'line_anchor' || ft === 'location_anchor') {
         document.getElementById('conditionTypePicker').value = 'starts_with';
         state.conditionType = 'starts_with';
@@ -522,6 +554,11 @@ function onLineSelected(line) {
     } else if (ft === 'skip') {
         document.getElementById('conditionTypePicker').value = 'contains';
         state.conditionType = 'contains';
+        buildPattern();
+    } else if (ft === 'section_start' || ft === 'section_end') {
+        // Section boundary rules match the whole header/footer line, so starts_with is safest
+        document.getElementById('conditionTypePicker').value = 'starts_with';
+        state.conditionType = 'starts_with';
         buildPattern();
     }
 }
@@ -550,8 +587,22 @@ function detectValue(line, fieldType) {
     }
     // Skip — entire line (user usually wants to match a distinctive phrase)
     if (fieldType === 'skip') {
-        // Return the most distinctive token — last meaningful word
         return line.trim();
+    }
+    // Section boundary — the whole line IS the matching target.
+    // Return the full line so the wizard uses it as the starts_with / contains value.
+    if (fieldType === 'section_start' || fieldType === 'section_end') {
+        return line.trim();
+    }
+    // Charge description — return the whole line stripped of trailing amount and noise.
+    // The user will clean up remaining noise with a regex_remove transform in Step 3.
+    if (state.fieldDef && state.fieldDef.fieldName === 'charge_desc') {
+        var desc = line
+            .replace(/\$?\s*-?[\d,]+\.\d{2}\s*$/, '') // strip trailing dollar amount
+            .replace(/\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*$/, '') // strip trailing MM/DD/YY date
+            .replace(/\s*\d{4}-\d{2}-\d{2}\s*$/, '')           // strip trailing YYYY-MM-DD date
+            .trim();
+        return desc || line.trim();
     }
     // String — try to get the last whitespace token
     var tokens = line.trim().split(/\s+/);
@@ -649,6 +700,23 @@ function renderStep3() {
     var optContainer = document.getElementById('transformOptions');
     optContainer.innerHTML = '';
 
+    // Section boundary rules — show a clear info panel instead of transform options
+    if (ft === 'section_start' || ft === 'section_end') {
+        var isSectionStart = ft === 'section_start';
+        optContainer.innerHTML =
+            '<div class="alert alert-info">' +
+                '<strong>' + (isSectionStart ? '▶ Section Start rule' : '■ Section End rule') + '</strong> — ' +
+                (isSectionStart
+                    ? 'When the parser sees a line matching this condition, it will <strong>start collecting charge rows</strong> below it.'
+                    : 'When the parser sees a line matching this condition, it will <strong>stop collecting charge rows</strong>.') +
+                '<br/><span class="small text-muted mt-1 d-block">No value extraction or transforms are needed — just save and the boundary will take effect on the next invoice upload.</span>' +
+            '</div>';
+        document.getElementById('customRemoveSection').style.display = 'none';
+        document.getElementById('finalValuePreview').textContent = '(boundary rule — no value)';
+        document.getElementById('previewWarning').style.display = 'none';
+        return; // skip normal suggestion rendering
+    }
+
     // Build transform suggestions based on field type
     var suggestions = buildTransformSuggestions(ft, raw, state.conditionType);
 
@@ -676,6 +744,85 @@ function renderStep3() {
     }
 
     rebuildTransforms(suggestions);
+
+    // Show "Add custom pattern removal" panel for string fields.
+    // Always visible so users can manually enter any noise pattern even if auto-detection found nothing.
+    var showCustomRemove = (ft === 'string');
+    document.getElementById('customRemoveSection').style.display = showCustomRemove ? '' : 'none';
+
+    if (showCustomRemove) {
+        // One-time wiring (guard against double-binding on goBack + goForward)
+        var customSection = document.getElementById('customRemoveSection');
+        if (!customSection._wired) {
+            customSection._wired = true;
+
+            document.querySelectorAll('.preset-pattern').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var inp = document.getElementById('customPatternInput');
+                    inp.value = this.getAttribute('data-pattern');
+                    inp.dispatchEvent(new Event('input'));
+                });
+            });
+
+            document.getElementById('customPatternInput').addEventListener('input', function () {
+                var pat = this.value.trim();
+                var previewEl = document.getElementById('customPatternPreview');
+                if (!pat) {
+                    previewEl.textContent = '(type a pattern above to see a preview)';
+                    previewEl.style.color = '';
+                    return;
+                }
+                try {
+                    var cleaned = state.extractedValue.replace(new RegExp(pat, 'gi'), '').trim();
+                    previewEl.textContent = '"' + state.extractedValue + '"  →  "' + (cleaned || '(empty)') + '"';
+                    previewEl.style.color = cleaned !== state.extractedValue ? '#198754' : '#6c757d';
+                } catch (e) {
+                    previewEl.textContent = '⚠ Invalid regex: ' + e.message;
+                    previewEl.style.color = '#dc3545';
+                }
+            });
+
+            document.getElementById('addCustomPatternBtn').addEventListener('click', function () {
+                var pat = document.getElementById('customPatternInput').value.trim();
+                if (!pat) return;
+                try { new RegExp(pat); } catch (e) { alert('Invalid regex pattern: ' + e.message); return; }
+
+                // Add as a new active suggestion
+                var newSuggestion = {
+                    id: 'custom_' + Date.now(),
+                    label: 'Remove pattern: <code>' + esc(pat) + '</code>',
+                    description: 'Removes all text matching this regex. Safe to use — if the pattern does not appear in a charge description, the value is left unchanged.',
+                    step: { Type: 'regex_remove', Value1: pat, Value2: null },
+                    preview: state.extractedValue.replace(new RegExp(pat, 'gi'), '').trim(),
+                    defaultOn: true, active: true,
+                };
+                suggestions.push(newSuggestion);
+
+                // Append the new checkbox row
+                var div = document.createElement('div');
+                div.className = 'transform-opt';
+                div.innerHTML =
+                    '<div class="form-check mb-0">' +
+                        '<input class="form-check-input transform-chk" type="checkbox" id="t_' + newSuggestion.id + '" checked />' +
+                        '<label class="form-check-label fw-semibold" for="t_' + newSuggestion.id + '">' + newSuggestion.label + '</label>' +
+                    '</div>' +
+                    '<div class="text-muted small mt-1">' + newSuggestion.description + '</div>' +
+                    '<div class="mt-1 small"><code>' + esc(state.extractedValue) + '</code> → <code class="text-success">' + esc(newSuggestion.preview) + '</code></div>';
+                div.querySelector('.transform-chk').addEventListener('change', function () {
+                    newSuggestion.active = this.checked;
+                    rebuildTransforms(suggestions);
+                });
+                document.getElementById('transformOptions').appendChild(div);
+
+                rebuildTransforms(suggestions);
+
+                // Reset input
+                document.getElementById('customPatternInput').value = '';
+                document.getElementById('customPatternPreview').textContent = '(type a pattern above to see a preview)';
+                document.getElementById('customPatternPreview').style.color = '';
+            });
+        }
+    }
 }
 
 function buildTransformSuggestions(fieldType, raw, conditionType) {
@@ -719,7 +866,66 @@ function buildTransformSuggestions(fieldType, raw, conditionType) {
         // No transforms needed for skip rules
     }
 
+    if (fieldType === 'section_start' || fieldType === 'section_end') {
+        // Section boundaries are pure condition rules — no value is extracted, no transforms needed.
+        // Return empty so the wizard shows "No cleanup needed — value saved as-is."
+    }
+
     if (fieldType === 'string') {
+        // ── Noise removal for charge descriptions ─────────────────────────────
+        // Detect dynamic date/period patterns inside the captured value and offer
+        // to remove them. These patterns change every billing cycle, so a simple
+        // Replace won't work — regex_remove is the right tool.
+        if (state.fieldDef && state.fieldDef.fieldName === 'charge_desc') {
+            var NOISE_PATTERNS = [
+                {
+                    re: /\d{1,2}\/\d{1,2}\/\d{2,4}/,
+                    label: 'Remove embedded MM/DD/YYYY date',
+                    hint:  'e.g. "Monthly Fee 03/15/2026" → "Monthly Fee"',
+                    pattern: '\\s*\\d{1,2}\\/\\d{1,2}\\/\\d{2,4}',
+                },
+                {
+                    re: /\d{4}-\d{2}-\d{2}/,
+                    label: 'Remove embedded YYYY-MM-DD date',
+                    hint:  'e.g. "Data Plan 2026-03-01" → "Data Plan"',
+                    pattern: '\\s*\\d{4}-\\d{2}-\\d{2}',
+                },
+                {
+                    re: /(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\.?\s+\d{1,2},?\s+\d{4}/i,
+                    label: 'Remove embedded month-name date',
+                    hint:  'e.g. "Service Fee March 1, 2026" → "Service Fee"',
+                    pattern: '\\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\\w*\\.?\\s+\\d{1,2},?\\s+\\d{4}',
+                },
+                {
+                    re: /\d{1,2}\/\d{1,2}\s*[-–]\s*\d{1,2}\/\d{1,2}/,
+                    label: 'Remove billing period range (MM/DD–MM/DD)',
+                    hint:  'e.g. "Voice 03/01-03/31" → "Voice"',
+                    pattern: '\\s*\\d{1,2}\\/\\d{1,2}\\s*[-\\u2013]\\s*\\d{1,2}\\/\\d{1,2}',
+                },
+                {
+                    re: /\(\s*\d{1,2}\/\d{1,2}\s*[-–]\s*\d{1,2}\/\d{1,2}\s*\)/,
+                    label: 'Remove billing period in parentheses (MM/DD–MM/DD)',
+                    hint:  'e.g. "Voice (03/01-03/31)" → "Voice"',
+                    pattern: '\\s*\\(\\s*\\d{1,2}\\/\\d{1,2}\\s*[-\\u2013]\\s*\\d{1,2}\\/\\d{1,2}\\s*\\)',
+                },
+            ];
+
+            var foundNoise = false;
+            NOISE_PATTERNS.forEach(function (np, ni) {
+                if (!np.re.test(raw)) return;
+                foundNoise = true;
+                var previewCleaned = raw.replace(new RegExp(np.pattern, 'gi'), '').trim();
+                s.push({
+                    id: 'rmpattern_' + ni,
+                    label: np.label,
+                    description: np.hint + '. The pattern is a regex that removes all occurrences — safe even when only some descriptions have this noise.',
+                    step: { Type: 'regex_remove', Value1: np.pattern, Value2: null },
+                    preview: previewCleaned,
+                    defaultOn: true, active: true,
+                });
+            });
+        }
+
         // Trim is always safe
         if (raw !== raw.trim()) {
             s.push({
@@ -800,6 +1006,10 @@ function applyTransformClient(val, step) {
         case 'to_lower': return val.toLowerCase();
         case 'replace':
             return step.Value1 ? val.split(step.Value1).join(step.Value2 || '') : val;
+        case 'regex_remove':
+            if (!step.Value1) return val;
+            try { return val.replace(new RegExp(step.Value1, 'gi'), '').trim(); }
+            catch (e) { return val; }
         case 'convert_date':
             return tryConvertDate(val) || val;
         case 'join_next_line': {

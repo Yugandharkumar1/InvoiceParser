@@ -71,6 +71,7 @@ public static class TransformPipeline
                 "to_lower"        => value.ToLowerInvariant(),
                 "extract_between" => ExtractBetween(value, step.Value1, step.Value2),
                 "regex_extract"   => RegexExtract(value, step.Value1),
+                "regex_remove"    => RegexRemove(value, step.Value1),
                 "convert_date"    => ConvertDate(value, step.Value1, step.Value2),
                 "join_next_line"  => JoinAdjacentLine(value, step.Value1, lines, matchedIdx, +1),
                 "join_prev_line"  => JoinAdjacentLine(value, step.Value1, lines, matchedIdx, -1),
@@ -123,6 +124,26 @@ public static class TransformPipeline
         if (m.Success && m.Groups.Count > 1) return m.Groups[1].Value.Trim();
         if (m.Success) return m.Value.Trim();
         return value;
+    }
+
+    /// <summary>
+    /// Removes ALL occurrences of <paramref name="pattern"/> from <paramref name="value"/>,
+    /// then trims whitespace. Useful for stripping dynamic noise like dates or billing periods
+    /// that appear inside charge descriptions and change every month.
+    /// <para>Example: pattern <c>\s*\d{1,2}/\d{1,2}/\d{4}</c> on
+    /// <c>"Monthly Service Fee 03/15/2026"</c> → <c>"Monthly Service Fee"</c>.</para>
+    /// </summary>
+    private static string RegexRemove(string value, string? pattern)
+    {
+        if (string.IsNullOrEmpty(pattern)) return value;
+        try
+        {
+            return Regex.Replace(value, pattern, string.Empty, RegexOptions.IgnoreCase).Trim();
+        }
+        catch
+        {
+            return value;
+        }
     }
 
     /// <summary>

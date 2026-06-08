@@ -580,6 +580,7 @@ E:\VCOM\InvoiceParser\src\InvoiceParser.Web\bin\Debug\net7.0\refs\System.Xml.Xml
 E:\VCOM\InvoiceParser\src\InvoiceParser.Web\bin\Debug\net7.0\refs\System.Xml.XPath.dll
 E:\VCOM\InvoiceParser\src\InvoiceParser.Web\bin\Debug\net7.0\refs\System.Xml.XPath.XDocument.dll
 E:\VCOM\InvoiceParser\src\InvoiceParser.Web\bin\Debug\net7.0\refs\WindowsBase.dll
-E:\VCOM\InvoiceParser\src\InvoiceParser.Web\obj\Debug\net7.0\InvoiceParser.Web.csproj.CopyComplete
 E:\VCOM\InvoiceParser\src\InvoiceParser.Web\obj\Debug\net7.0\InvoiceParser.Web.genruntimeconfig.cache
 E:\VCOM\InvoiceParser\src\InvoiceParser.Web\obj\Debug\net7.0\ref\InvoiceParser.Web.dll
+E:\VCOM\InvoiceParser\src\InvoiceParser.Web\bin\Debug\net7.0\RuleDefinitions\389.rules.json
+E:\VCOM\InvoiceParser\src\InvoiceParser.Web\obj\Debug\net7.0\InvoiceParser.Web.csproj.CopyComplete
