@@ -64,10 +64,16 @@ public static class ChargeExtractor
         "PAYMENT", "THANK YOU", "ADJUSTMENT",
     };
 
+    /// <summary>
+    /// Regex that finds the last decimal number on a line (used as fallback amount for table_row rules).
+    /// </summary>
+    private static readonly Regex LastDecimalOnLine = new(
+        @"\$?\s*([\d,]+\.\d{2})\s*$", RegexOptions.Compiled);
+
     /// <param name="chargeRules">
     /// All active <c>t_charge</c> rules for this carrier.  The extractor categorises them
     /// internally: <c>line_anchor</c>, <c>location_anchor</c>, <c>section_start</c>,
-    /// <c>section_end</c>, and <c>skip</c>.
+    /// <c>section_end</c>, <c>skip</c>, and <c>table_row</c>.
     /// </param>
     public static void Extract(string pdfText, IList<ParsedCharge> charges,
         IList<VendorParsingRule>? chargeRules = null)
@@ -83,46 +89,39 @@ public static class ChargeExtractor
             .Where(r => r.IsActive && r.TargetTable == "t_charge" &&
                         (r.FieldType == "location_anchor" || r.FieldName == "location"))
             .ToList();
-        // Section-boundary rules: open or close the "we are inside a charge section" gate.
         var sectionStartRules = chargeRules?
             .Where(r => r.IsActive && r.TargetTable == "t_charge" && r.FieldType == "section_start")
             .ToList();
         var sectionEndRules = chargeRules?
             .Where(r => r.IsActive && r.TargetTable == "t_charge" && r.FieldType == "section_end")
             .ToList();
-        // Skip rules evaluated at extraction time against the raw description — charge never added.
         var lineSkipRules = chargeRules?
             .Where(r => r.IsActive && r.TargetTable == "t_charge" && r.FieldType == "skip")
             .ToList();
+        // Table-row rules: trigger line contains the amount; description comes from an offset line above/below.
+        var tableRowRules = chargeRules?
+            .Where(r => r.IsActive && r.TargetTable == "t_charge" && r.FieldType == "table_row")
+            .ToList();
+        // Line-before-price rules: trigger line matched; description auto-found by scanning upward.
+        var lineBeforePriceRules = chargeRules?
+            .Where(r => r.IsActive && r.TargetTable == "t_charge" && r.FieldType == "line_before_price")
+            .ToList();
 
-        bool hasAnchorRules     = (lineAnchorRules?.Count > 0) || (locationAnchorRules?.Count > 0);
-        bool hasSectionRules    = (sectionStartRules?.Count > 0) || (sectionEndRules?.Count > 0);
+        bool hasAnchorRules        = (lineAnchorRules?.Count > 0) || (locationAnchorRules?.Count > 0);
+        bool hasTableRowRules      = tableRowRules?.Count > 0;
+        bool hasLineBeforePriceRules = lineBeforePriceRules?.Count > 0;
 
         string? currentSection  = null;
         string? currentLine     = null;
         string? currentLocation = null;
 
-        foreach (var rawLine in lines)
+        for (int lineIdx = 0; lineIdx < lines.Length; lineIdx++)
         {
+            var rawLine = lines[lineIdx];
             var line = rawLine.Trim();
             if (string.IsNullOrWhiteSpace(line) || line.Length < 4) continue;
 
             if (Regex.IsMatch(line, @"^Circuit\s*ID\s*:", RegexOptions.IgnoreCase)) continue;
-
-            // ── Configurable anchor rules ─────────────────────────────────────
-            if (hasAnchorRules)
-            {
-                if (TryApplyAnchorRule(line, lineAnchorRules, out var extractedLine, pdfText))
-                {
-                    currentLine = extractedLine;
-                    continue;
-                }
-                if (TryApplyAnchorRule(line, locationAnchorRules, out var extractedLocation, pdfText))
-                {
-                    currentLocation = extractedLocation;
-                    continue;
-                }
-            }
 
             if (PhoneTotalPattern.IsMatch(line))
             {
@@ -158,30 +157,57 @@ public static class ChargeExtractor
                 if (taxHeaderMatch.Success) continue;
             }
 
-            // ── Configurable section-end rules (checked before section-start) ──
-            // When the carrier has defined an end boundary, close the gate the moment
-            // the matching line is seen (e.g. "Subtotal", "Total Due", etc.).
+            // ── Configurable section-end rules ───────────────────────────────
+            // Evaluated BEFORE anchor rules so a line like "Total Services Detail for AAA..."
+            // can both close the section AND set currentLocation without skipping the boundary check.
             if (currentSection != null && sectionEndRules?.Count > 0)
             {
                 if (sectionEndRules.Any(r =>
                         ConditionEvaluator.Evaluate(line, r.ConditionType, r.RegexPattern)))
                 {
                     currentSection = null;
-                    continue;
+                    // Fall through — still allow anchor extraction from this line.
                 }
             }
 
             // ── Configurable section-start rules ─────────────────────────────
-            // Carrier-specific headers that aren't in the hard-coded list (e.g.
-            // "Charges For Service", "Current Activity", "Service Detail").
+            // Evaluated BEFORE anchor rules so a line like "MONTHLY CHARGES FOR 000-401-6568"
+            // can both open the section AND set currentLine without skipping the boundary check.
             if (sectionStartRules?.Count > 0)
             {
                 if (sectionStartRules.Any(r =>
                         ConditionEvaluator.Evaluate(line, r.ConditionType, r.RegexPattern)))
                 {
                     currentSection = "configured";
-                    continue;
+                    // Fall through — still allow anchor extraction from this line.
                 }
+            }
+
+            // ── Configurable anchor rules ─────────────────────────────────────
+            // Runs after section boundary checks so the same line can set the section
+            // boundary AND update currentLine / currentLocation in one pass.
+            if (hasAnchorRules)
+            {
+                bool anchorMatched = false;
+                if (TryApplyAnchorRule(line, lineAnchorRules, out var extractedLine, pdfText))
+                {
+                    currentLine = extractedLine;
+                    anchorMatched = true;
+                }
+                if (TryApplyAnchorRule(line, locationAnchorRules, out var extractedLocation, pdfText))
+                {
+                    currentLocation = extractedLocation;
+                    anchorMatched = true;
+                }
+                // Skip charge extraction for this line — it is a header/anchor line, not a charge.
+                if (anchorMatched) continue;
+            }
+            else if (currentSection == "configured" &&
+                     sectionStartRules?.Any(r =>
+                         ConditionEvaluator.Evaluate(line, r.ConditionType, r.RegexPattern)) == true)
+            {
+                // No anchor rules — section-start line is just a boundary marker, not a charge.
+                continue;
             }
 
             // ── Hard-coded section headers (backward-compatible fallback) ──────
@@ -198,12 +224,134 @@ public static class ChargeExtractor
             }
 
             if (currentSection == null) continue;
-
             if (isSectionHeader) continue;
             if (SkipLinePrefixes.Any(sp => line.StartsWith(sp, StringComparison.OrdinalIgnoreCase))) continue;
-
             if (SummaryTotalLine.IsMatch(line)) continue;
 
+            // ── Table-row rules (multi-line product/amount tables) ────────────
+            // These take priority over standard ChargeLine matching so the trigger
+            // line is not also processed as a regular charge.
+            if (hasTableRowRules)
+            {
+                var tableMatch = tableRowRules!.FirstOrDefault(r =>
+                    ConditionEvaluator.Evaluate(line, r.ConditionType, r.RegexPattern));
+
+                if (tableMatch != null)
+                {
+                    // Resolve description line (offset from trigger line index).
+                    var descIdx = lineIdx + tableMatch.DescriptionLineOffset;
+                    if (descIdx >= 0 && descIdx < lines.Length)
+                    {
+                        var descLine = lines[descIdx].Trim();
+                        if (!string.IsNullOrWhiteSpace(descLine) && descLine.Length >= 2)
+                        {
+                            // Apply optional transforms to the description
+                            var steps = TransformPipeline.Deserialize(tableMatch.TransformationsJson);
+                            if (steps != null)
+                                descLine = TransformPipeline.Apply(descLine, steps, pdfText, matchedLine: descLine);
+
+                            // Skip if matches a skip rule
+                            if (lineSkipRules?.Count > 0 &&
+                                lineSkipRules.Any(r =>
+                                    ConditionEvaluator.Evaluate(descLine, r.ConditionType, r.RegexPattern)))
+                            {
+                                continue;
+                            }
+
+                            // Extract amount from trigger line
+                            decimal? amount = null;
+                            if (!string.IsNullOrWhiteSpace(tableMatch.AmountPattern))
+                            {
+                                var amtMatch = Regex.Match(line, tableMatch.AmountPattern);
+                                if (amtMatch.Success && MonetaryParser.TryParse(
+                                        amtMatch.Groups.Count > 1 ? amtMatch.Groups[1].Value : amtMatch.Value,
+                                        out var parsedAmt))
+                                    amount = parsedAmt;
+                            }
+                            else
+                            {
+                                // Fallback: last decimal number on the trigger line
+                                var lastAmt = LastDecimalOnLine.Match(line);
+                                if (lastAmt.Success && MonetaryParser.TryParse(lastAmt.Groups[1].Value, out var parsedAmt))
+                                    amount = parsedAmt;
+                            }
+
+                            charges.Add(new ParsedCharge
+                            {
+                                ChargeDescription = descLine,
+                                Amount            = amount,
+                                Line              = currentLine,
+                                Location          = currentLocation,
+                            });
+                        }
+                    }
+                    continue; // do not process trigger line as a normal charge
+                }
+            }
+
+            // ── Line-before-price rules ───────────────────────────────────────
+            // When a trigger line is matched (e.g. contains "RECURRING CHARGE"),
+            // scan backwards to find the nearest non-empty, non-trigger line and
+            // use it as the charge description. No fixed offset required.
+            if (hasLineBeforePriceRules)
+            {
+                var lbpMatch = lineBeforePriceRules!.FirstOrDefault(r =>
+                    ConditionEvaluator.Evaluate(line, r.ConditionType, r.RegexPattern));
+
+                if (lbpMatch != null)
+                {
+                    string? descLine = null;
+
+                    for (int scanIdx = lineIdx - 1; scanIdx >= 0 && descLine == null; scanIdx--)
+                    {
+                        var candidate = lines[scanIdx].Trim();
+                        if (string.IsNullOrWhiteSpace(candidate) || candidate.Length < 2) continue;
+
+                        // Stop at hard section boundaries
+                        if (SectionHeaders.Any(h => candidate.StartsWith(h, StringComparison.OrdinalIgnoreCase))) break;
+                        if (sectionStartRules?.Any(r => ConditionEvaluator.Evaluate(candidate, r.ConditionType, r.RegexPattern)) == true) break;
+
+                        // Skip other trigger lines (other RECURRING CHARGE rows)
+                        if (lineBeforePriceRules!.Any(r => ConditionEvaluator.Evaluate(candidate, r.ConditionType, r.RegexPattern))) continue;
+
+                        // Skip table_row trigger lines too
+                        if (hasTableRowRules && tableRowRules!.Any(r => ConditionEvaluator.Evaluate(candidate, r.ConditionType, r.RegexPattern))) continue;
+
+                        // Skip user-defined skip lines
+                        if (lineSkipRules?.Any(r => ConditionEvaluator.Evaluate(candidate, r.ConditionType, r.RegexPattern)) == true) continue;
+
+                        // Skip pure summary/total lines
+                        if (SummaryTotalLine.IsMatch(candidate)) continue;
+                        if (SkipLinePrefixes.Any(sp => candidate.StartsWith(sp, StringComparison.OrdinalIgnoreCase))) continue;
+
+                        descLine = candidate;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(descLine))
+                    {
+                        var steps = TransformPipeline.Deserialize(lbpMatch.TransformationsJson);
+                        if (steps != null)
+                            descLine = TransformPipeline.Apply(descLine, steps, pdfText, matchedLine: descLine);
+
+                        var lastAmt = LastDecimalOnLine.Match(line);
+                        decimal? amount = null;
+                        if (lastAmt.Success && MonetaryParser.TryParse(lastAmt.Groups[1].Value, out var parsedAmt))
+                            amount = parsedAmt;
+
+                        charges.Add(new ParsedCharge
+                        {
+                            ChargeDescription = descLine,
+                            Amount            = amount,
+                            Line              = currentLine,
+                            Location          = currentLocation,
+                        });
+                    }
+
+                    continue; // do not process trigger line as a normal charge
+                }
+            }
+
+            // ── Standard single-line charge extraction ────────────────────────
             var match = ChargeLine.Match(line);
             if (!match.Success) continue;
 
@@ -222,9 +370,6 @@ public static class ChargeExtractor
             desc = UnitPricingPattern.Replace(desc, "").Trim();
             if (string.IsNullOrWhiteSpace(desc) || desc.Length < 3) continue;
 
-            // ── Configurable skip rules (evaluated at line level) ─────────────
-            // Checked here — before the charge is added — so unwanted lines never
-            // become charge objects in the first place.
             if (lineSkipRules?.Count > 0 &&
                 lineSkipRules.Any(r =>
                     ConditionEvaluator.Evaluate(desc, r.ConditionType, r.RegexPattern)))

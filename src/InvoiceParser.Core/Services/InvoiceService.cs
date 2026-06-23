@@ -90,6 +90,71 @@ public class InvoiceService
     public Task<List<Customer>> GetCustomersAsync() => _repository.GetCustomersAsync();
     public Task<List<Carrier>> GetCarriersAsync() => _repository.GetCarriersAsync();
     public Task<Carrier?> GetCarrierByIdAsync(int id) => _repository.GetCarrierByIdAsync(id);
+
+    /// <summary>Extracts raw text from a file stream (PDF or image) without running the full parse pipeline.</summary>
+    public async Task<string> ExtractTextFromFileAsync(Stream fileStream, string fileName)
+    {
+        using var ms = new MemoryStream();
+        await fileStream.CopyToAsync(ms);
+        ms.Position = 0;
+        return PdfTextExtractorService.IsImageFile(fileName)
+            ? _pdfExtractor.ExtractTextFromImage(ms)
+            : _pdfExtractor.ExtractText(ms);
+    }
+
+    /// <summary>
+    /// Scores all carriers against the PDF text and returns the best match,
+    /// or null when no carrier is confidently recognised.
+    /// Scoring weights: carrier Name match = ×3, carrier Code match = ×2,
+    /// each configured keyword match = ×3.
+    /// A minimum score of 3 is required to avoid false-positive single-word matches.
+    /// </summary>
+    public async Task<Carrier?> DetectCarrierAsync(string pdfText)
+    {
+        if (string.IsNullOrWhiteSpace(pdfText)) return null;
+
+        var carriers = await GetCarriersAsync();
+
+        // Load detection keywords for every carrier in parallel
+        var keywordMap = new Dictionary<int, List<string>>();
+        foreach (var c in carriers)
+        {
+            var kw = await _ruleStore.GetDetectionKeywordsAsync(c.Id);
+            if (kw.Count > 0) keywordMap[c.Id] = kw;
+        }
+
+        const int MinScore = 3;
+
+        var best = carriers
+            .Select(c =>
+            {
+                int score = CountOccurrences(pdfText, c.Name) * 3
+                          + CountOccurrences(pdfText, c.Code) * 2;
+
+                if (keywordMap.TryGetValue(c.Id, out var keywords))
+                    foreach (var kw in keywords)
+                        score += CountOccurrences(pdfText, kw) * 3;
+
+                return new { Carrier = c, Score = score };
+            })
+            .Where(x => x.Score >= MinScore)
+            .OrderByDescending(x => x.Score)
+            .FirstOrDefault();
+
+        return best?.Carrier;
+    }
+
+    private static int CountOccurrences(string text, string term)
+    {
+        if (string.IsNullOrWhiteSpace(term) || term.Length < 2) return 0;
+        int count = 0, idx = 0;
+        while ((idx = text.IndexOf(term, idx, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            count++;
+            idx += term.Length;
+        }
+        return count;
+    }
     public Task<Invoice?> GetInvoiceByIdAsync(int id) => _repository.GetInvoiceByIdAsync(id);
     public Task<List<Invoice>> GetAllInvoicesAsync() => _repository.GetAllInvoicesAsync();
 
@@ -216,6 +281,13 @@ public class InvoiceService
         _logger.LogInformation("Extracted {Length} chars of PDF text.", text.Length);
         return await ParseExtractedTextAsync(text, carrierId);
     }
+
+    /// <summary>
+    /// Re-runs the full parse pipeline against already-extracted PDF text (no file I/O).
+    /// Used by the review page to apply newly-added rules without re-uploading the invoice.
+    /// </summary>
+    public Task<ParsePdfResult> ParseTextAsync(string text, int carrierId)
+        => ParseExtractedTextAsync(text, carrierId);
 
     private async Task<ParsePdfResult> ParseExtractedTextAsync(string text, int carrierId)
     {
@@ -448,6 +520,9 @@ public class InvoiceService
 
     public async Task<Invoice?> FindDuplicateInvoiceAsync(string? invoiceNumber, int? carrierId)
         => await _repository.FindDuplicateInvoiceAsync(invoiceNumber, carrierId);
+
+    public async Task DeleteInvoiceAsync(int id)
+        => await _repository.DeleteInvoiceAsync(id);
 
     public async Task<Invoice> SaveParsedInvoiceAsync(Invoice invoice, List<Charge> charges)
     {

@@ -11,11 +11,12 @@
                 <h4 class="mb-0">Upload Invoice PDF</h4>
             </div>
             <div class="card-body">
-                <form asp-action="Upload" method="post" enctype="multipart/form-data">
+                <form asp-action="Upload" method="post" enctype="multipart/form-data" id="uploadForm">
                     @Html.AntiForgeryToken()
 
                     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
+                    @* ── Step 1: Customer ───────────────────────────────────────────── *@
                     <div class="mb-3">
                         <label asp-for="CustomerId" class="form-label fw-semibold">Customer</label>
                         <select asp-for="CustomerId" asp-items="Model.Customers" class="form-select">
@@ -24,22 +25,67 @@
                         <span asp-validation-for="CustomerId" class="text-danger"></span>
                     </div>
 
+                    @* ── Step 2: Invoice file (moved up so we can auto-detect carrier) *@
                     <div class="mb-3">
-                        <label asp-for="CarrierId" class="form-label fw-semibold">Carrier</label>
-                        <select asp-for="CarrierId" asp-items="Model.Carriers" class="form-select">
-                            <option value="">-- Select Carrier --</option>
-                        </select>
-                        <span asp-validation-for="CarrierId" class="text-danger"></span>
-                    </div>
-
-                    <div class="mb-4">
                         <label asp-for="PdfFile" class="form-label fw-semibold">Invoice PDF</label>
-                        <input asp-for="PdfFile" type="file" class="form-control" accept=".pdf" />
+                        <input asp-for="PdfFile" type="file" class="form-control" id="pdfFileInput" accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff" />
                         <span asp-validation-for="PdfFile" class="text-danger"></span>
                         <div class="form-text">Upload a PDF invoice to parse and extract data.</div>
                     </div>
 
-                    <button type="submit" class="btn btn-primary px-4">
+                    @* ── Step 3: Carrier — auto-detected or manual fallback ──────────── *@
+                    <div class="mb-4" id="carrierSection">
+
+                        <label class="form-label fw-semibold">Carrier</label>
+
+                        @* Detecting spinner *@
+                        <div id="carrierDetecting" class="d-none">
+                            <div class="d-flex align-items-center gap-2 text-secondary small py-2">
+                                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                <span>Detecting carrier from invoice…</span>
+                            </div>
+                        </div>
+
+                        @* Detected result banner *@
+                        <div id="carrierDetected" class="d-none">
+                            <div class="alert alert-success d-flex align-items-center justify-content-between py-2 mb-2" role="alert">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="bi bi-check-circle-fill fs-5"></i>
+                                    <span>Carrier detected: <strong id="detectedCarrierName"></strong></span>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ms-3" id="changeCarrierBtn">
+                                    Change
+                                </button>
+                            </div>
+                        </div>
+
+                        @* Not-detected warning *@
+                        <div id="carrierNotDetected" class="d-none">
+                            <div class="alert alert-warning d-flex align-items-center gap-2 py-2 mb-2" role="alert">
+                                <i class="bi bi-exclamation-triangle-fill"></i>
+                                <span id="notDetectedMsg">Carrier not recognised — please select below.</span>
+                            </div>
+                        </div>
+
+                        @* Hidden by default; revealed when detection fails or user clicks Change *@
+                        <div id="carrierDropdownWrap" class="d-none">
+                            <select asp-for="CarrierId" asp-items="Model.Carriers" class="form-select" id="CarrierId">
+                                <option value="">-- Select Carrier --</option>
+                            </select>
+                            <span asp-validation-for="CarrierId" class="text-danger"></span>
+                        </div>
+
+                        @* Always shown before a file is chosen *@
+                        <div id="carrierPrompt">
+                            <p class="text-muted small mb-0">
+                                <i class="bi bi-info-circle"></i>
+                                The carrier will be detected automatically once you choose an invoice file above.
+                            </p>
+                        </div>
+
+                    </div>
+
+                    <button type="submit" class="btn btn-primary px-4" id="parseBtn">
                         Parse Invoice
                     </button>
                     <a asp-action="Index" class="btn btn-outline-secondary ms-2">Cancel</a>
@@ -50,18 +96,99 @@
 </div>
 
 @section Scripts {
-    <script>
-        $(document).ready(function () {
-            $('#CustomerId').select2({
-                theme: 'bootstrap-5',
-                placeholder: '-- Search Customer --',
-                allowClear: true
-            });
-            $('#CarrierId').select2({
-                theme: 'bootstrap-5',
-                placeholder: '-- Search Carrier --',
-                allowClear: true
-            });
+<script>
+$(document).ready(function () {
+    // ── Select2 for Customer ─────────────────────────────────────────────────
+    $('#CustomerId').select2({
+        theme: 'bootstrap-5',
+        placeholder: '-- Search Customer --',
+        allowClear: true
+    });
+
+    // Select2 for the fallback carrier dropdown (applied lazily so it works even when hidden)
+    $('#CarrierId').select2({
+        theme: 'bootstrap-5',
+        placeholder: '-- Search Carrier --',
+        allowClear: true
+    });
+
+    // ── Carrier auto-detection ───────────────────────────────────────────────
+    $('#pdfFileInput').on('change', function () {
+        var file = this.files && this.files[0];
+        if (!file) return;
+
+        // Reset state
+        $('#carrierPrompt').addClass('d-none');
+        $('#carrierDetected').addClass('d-none');
+        $('#carrierNotDetected').addClass('d-none');
+        $('#carrierDropdownWrap').addClass('d-none');
+        $('#carrierDetecting').removeClass('d-none');
+
+        var formData = new FormData();
+        formData.append('file', file);
+        formData.append('__RequestVerificationToken', $('input[name="__RequestVerificationToken"]').val());
+
+        $.ajax({
+            url: '/api/invoice/detect-carrier',
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function (resp) {
+                $('#carrierDetecting').addClass('d-none');
+
+                if (resp.detected) {
+                    // Auto-select in the hidden dropdown so it submits with the form
+                    var opt = $('#CarrierId').find('option[value="' + resp.carrierId + '"]');
+                    if (opt.length) {
+                        $('#CarrierId').val(resp.carrierId).trigger('change');
+                    } else {
+                        // Option not in list yet — append it
+                        $('#CarrierId').append(new Option(resp.carrierName, resp.carrierId, true, true)).trigger('change');
+                    }
+
+                    $('#detectedCarrierName').text(resp.carrierName);
+                    $('#carrierDetected').removeClass('d-none');
+                } else {
+                    // Detection failed — show manual dropdown
+                    $('#notDetectedMsg').text(resp.message || 'Carrier not recognised — please select below.');
+                    $('#carrierNotDetected').removeClass('d-none');
+                    $('#carrierDropdownWrap').removeClass('d-none');
+                    // Re-initialise select2 after becoming visible
+                    setTimeout(function () { $('#CarrierId').select2('destroy').select2({ theme: 'bootstrap-5', placeholder: '-- Search Carrier --', allowClear: true }); }, 50);
+                }
+            },
+            error: function () {
+                $('#carrierDetecting').addClass('d-none');
+                $('#notDetectedMsg').text('Detection failed — please select the carrier manually.');
+                $('#carrierNotDetected').removeClass('d-none');
+                $('#carrierDropdownWrap').removeClass('d-none');
+            }
         });
-    </script>
+    });
+
+    // ── "Change" button — let user override the detected carrier ────────────
+    $('#changeCarrierBtn').on('click', function () {
+        $('#carrierDropdownWrap').removeClass('d-none');
+        // Focus the select2 dropdown
+        setTimeout(function () {
+            $('#CarrierId').select2('destroy').select2({ theme: 'bootstrap-5', placeholder: '-- Search Carrier --', allowClear: true });
+            $('#CarrierId').select2('open');
+        }, 50);
+    });
+
+    // ── When user manually picks a carrier, update the detected banner ───────
+    $('#CarrierId').on('change', function () {
+        var selected = $(this).find('option:selected');
+        if (selected.val()) {
+            var name = selected.text().trim();
+            if (name && name !== '-- Select Carrier --') {
+                $('#detectedCarrierName').text(name);
+                $('#carrierDetected').removeClass('d-none');
+                $('#carrierNotDetected').addClass('d-none');
+            }
+        }
+    });
+});
+</script>
 }

@@ -96,6 +96,8 @@ public class InvoiceRepository : IInvoiceRepository
     public async Task<Invoice?> GetInvoiceByIdAsync(int id)
         => await _db.Invoices
             .Include(i => i.Charges)
+            .Include(i => i.Usages)
+            .Include(i => i.Inventories)
             .FirstOrDefaultAsync(i => i.Id == id);
 
     public async Task<List<Invoice>> GetAllInvoicesAsync()
@@ -266,6 +268,18 @@ public class InvoiceRepository : IInvoiceRepository
 
         return await _db.Invoices.FirstOrDefaultAsync(i =>
             i.InvoiceNumber == invoiceNumber && i.CarrierId == carrierId);
+    }
+
+    public async Task DeleteInvoiceAsync(int id)
+    {
+        var invoice = await _db.Invoices
+            .Include(i => i.Charges)
+            .FirstOrDefaultAsync(i => i.Id == id);
+        if (invoice != null)
+        {
+            _db.Invoices.Remove(invoice);
+            await _db.SaveChangesAsync();
+        }
     }
 
     public async Task SaveInvoiceWithRelatedDataAsync(Invoice invoice, List<Usage> usages, List<Inventory> inventories)

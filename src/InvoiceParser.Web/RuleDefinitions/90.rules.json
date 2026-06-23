@@ -1,0 +1,20 @@
+[
+  {
+    "Id": 1,
+    "CarrierId": 90,
+    "FieldName": "invoice_date",
+    "RegexPattern": "Invoice\\s\u002BDate:\\s\u002B([^\\r\\n]\u002B)",
+    "FieldType": "string",
+    "TargetTable": "t_invoice",
+    "Section": null,
+    "SortOrder": 10,
+    "IsActive": true,
+    "SuccessCount": 0,
+    "FailCount": 0,
+    "ConditionType": "regex_match",
+    "ConditionSource": "line_text",
+    "TransformationsJson": null,
+    "DescriptionLineOffset": -1,
+    "AmountPattern": null
+  }
+]

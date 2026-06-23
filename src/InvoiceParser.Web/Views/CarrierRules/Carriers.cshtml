@@ -1,11 +1,11 @@
 @model IEnumerable<InvoiceParser.Core.Entities.Carrier>
 @{
-    ViewData["Title"] = "Carrier Extraction Rules";
+    ViewData["Title"] = "Carrier Rules";
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-        <h3 class="mb-0">Carrier Extraction Rules</h3>
+        <h3 class="mb-0">Carrier Rules</h3>
         <p class="text-muted small mb-0">Select a carrier to view and manage its configurable extraction rules.</p>
     </div>
     <span id="carrierCount" class="text-muted small"></span>
@@ -42,23 +42,32 @@
         {
             <div class="col-md-4 col-lg-3 carrier-col"
                  data-name="@((carrier.Name + " " + carrier.Code).ToLower())">
-                <a asp-action="Index" asp-route-carrierId="@carrier.Id"
-                   class="card h-100 shadow-sm text-decoration-none text-dark carrier-card">
-                    <div class="card-body d-flex align-items-center gap-3">
-                        <div class="carrier-icon bg-primary text-white rounded d-flex align-items-center
-                                    justify-content-center flex-shrink-0"
-                             style="width:42px;height:42px;font-size:1.2rem;font-weight:700;">
-                            @((carrier.Name ?? "?")[..1].ToUpper())
+                <div class="card h-100 shadow-sm carrier-card">
+                    <a asp-action="Index" asp-route-carrierId="@carrier.Id"
+                       class="text-decoration-none text-dark flex-grow-1">
+                        <div class="card-body d-flex align-items-center gap-3 pb-2">
+                            <div class="carrier-icon bg-primary text-white rounded d-flex align-items-center
+                                        justify-content-center flex-shrink-0"
+                                 style="width:42px;height:42px;font-size:1.2rem;font-weight:700;">
+                                @((carrier.Name ?? "?")[..1].ToUpper())
+                            </div>
+                            <div>
+                                <div class="fw-semibold">@carrier.Name</div>
+                                @if (!string.IsNullOrWhiteSpace(carrier.Code))
+                                {
+                                    <div class="text-muted small">@carrier.Code</div>
+                                }
+                            </div>
                         </div>
-                        <div>
-                            <div class="fw-semibold">@carrier.Name</div>
-                            @if (!string.IsNullOrWhiteSpace(carrier.Code))
-                            {
-                                <div class="text-muted small">@carrier.Code</div>
-                            }
-                        </div>
+                    </a>
+                    <div class="card-footer bg-transparent border-top-0 pt-0 pb-2 px-3">
+                        <a asp-action="DetectionKeywords" asp-route-carrierId="@carrier.Id"
+                           class="btn btn-outline-secondary btn-sm w-100"
+                           title="Configure keywords used to auto-detect this carrier from an uploaded invoice">
+                            🔍 Detection Keywords
+                        </a>
                     </div>
-                </a>
+                </div>
             </div>
         }
     </div>

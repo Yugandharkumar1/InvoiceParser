@@ -33,6 +33,7 @@ public interface IInvoiceRepository
     Task SaveUsagesAsync(List<Usage> usages);
     Task SaveInventoriesAsync(List<Inventory> inventories);
     Task<Invoice?> FindDuplicateInvoiceAsync(string? invoiceNumber, int? carrierId);
+    Task DeleteInvoiceAsync(int id);
     Task SaveInvoiceWithRelatedDataAsync(Invoice invoice, List<Usage> usages, List<Inventory> inventories);
     Task<List<LineFeedback>> GetAllLineFeedbackAsync();
     Task SaveLineFeedbackAsync(LineFeedback feedback);

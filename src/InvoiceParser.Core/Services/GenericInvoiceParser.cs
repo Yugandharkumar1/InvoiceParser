@@ -113,8 +113,11 @@ public class GenericInvoiceParser
                     // Use capture group 1 when present; fall back to the full match so that
                     // patterns without explicit groups still produce a value.
                     if (string.IsNullOrWhiteSpace(rule.RegexPattern)) continue;
+                    // Use Multiline so ^ / $ anchor to line boundaries and "." does NOT
+                    // cross line endings. This prevents (.+) style capture groups from
+                    // greedily consuming the rest of the entire document.
                     var match = Regex.Match(pdfText, rule.RegexPattern,
-                        RegexOptions.Singleline | RegexOptions.IgnoreCase);
+                        RegexOptions.Multiline | RegexOptions.IgnoreCase);
                     if (match.Success)
                     {
                         value       = (match.Groups.Count > 1 ? match.Groups[1].Value : match.Value).Trim();
@@ -336,6 +339,7 @@ public class GenericInvoiceParser
             result.SummaryFields["carrier_account"] = account;
 
         TotalExtractor.ExtractEndBal(normalizedText, result.SummaryFields);
+        TotalExtractor.ComputeFallback(result.SummaryFields);   // derive from other fields if not found
 
         ChargeExtractor.Extract(normalizedText, result.Charges, chargeRules);
 

@@ -120,23 +120,36 @@
             <div id="selectedLinePanel" class="mt-3" style="display:none;">
                 <hr />
                 <p class="fw-semibold mb-1">Selected line:</p>
-                <div id="selectedLineHighlight" class="p-2 rounded border font-monospace small mb-3"
+                <div id="selectedLineHighlight" class="p-2 rounded border font-monospace small mb-2"
                      style="background:#fff;word-break:break-all;"></div>
+
+                <!-- Token picker: click word(s) to define value or match text -->
+                <div id="wizTokenPickerWrap" class="mb-3" style="display:none;">
+                    <label class="form-label small fw-semibold mb-1" id="wizTokenPickerLabel">
+                        Click the word that is the <span class="text-primary fw-bold">value</span> you want to capture:
+                    </label>
+                    <div id="wizLineTokens" class="border rounded px-2 py-2 bg-white font-monospace"
+                         style="font-size:0.82rem;line-height:2.2;word-break:break-all;"></div>
+                    <div class="form-text" id="wizTokenPickerHint">
+                        Each word is a button. <strong>Click once</strong> to select a single word.
+                        <strong>Click a second word</strong> to extend the selection across multiple words.
+                    </div>
+                </div>
 
                 <div class="row g-3 align-items-end">
                     <div class="col-md-5">
-                        <label class="form-label fw-semibold">Extracted value</label>
-                        <input type="text" id="extractedValue" class="form-control"
+                        <label class="form-label fw-semibold" id="extractedValueLabel">Value to capture</label>
+                        <input type="text" id="extractedValue" class="form-control text-success fw-semibold"
                                placeholder="The value we will extract" />
-                        <div class="form-text">Confirm or correct the detected value.</div>
+                        <div class="form-text" id="extractedValueHint">Edit if the detected value is wrong.</div>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label fw-semibold">How to match this line</label>
+                        <label class="form-label fw-semibold" id="conditionPickerLabel">What should the rule do?</label>
                         <select id="conditionTypePicker" class="form-select">
-                            <option value="regex_match">By pattern (recommended)</option>
-                            <option value="starts_with">Line starts with…</option>
-                            <option value="contains">Line contains…</option>
-                            <option value="equals">Exact line match</option>
+                            <option id="condOptRegexMatch" value="regex_match">🎯 Extract a specific value (recommended)</option>
+                            <option value="starts_with">🔍 Line starts with…</option>
+                            <option value="contains">🔍 Line contains…</option>
+                            <option value="equals">🔍 Exact line match</option>
                         </select>
                     </div>
                     <div class="col-md-3">
@@ -146,11 +159,40 @@
                     </div>
                 </div>
 
-                <div class="mt-3">
-                    <label class="form-label fw-semibold text-muted small">Generated rule pattern</label>
-                    <input type="text" id="generatedPattern" class="form-control form-control-sm font-monospace"
+                <!-- Warning: simple mode chosen for a value-extracting field -->
+                <div id="wizSimpleModeWarning" class="alert alert-warning py-2 px-3 small mt-2" style="display:none;">
+                    <strong>⚠ Heads-up:</strong> This mode records the <em>entire matching line</em> as the field value.
+                    If you need to capture just a number, date, or code, choose
+                    <strong>"Extract a specific value"</strong> instead.
+                </div>
+
+                <!-- Date-in-prefix warning -->
+                <div id="wizDatePrefixWarning" class="alert alert-warning py-2 px-3 small mt-2" style="display:none;">
+                    <strong>⚠ Unstable prefix:</strong> The text before your value contains a
+                    <strong>date or billing period</strong> that changes each invoice — the rule may fail next month.<br/>
+                    <span class="mt-1 d-block">
+                        <strong>Tip:</strong> Click a word closer to the value in the token picker above, or
+                        use <strong>↻ Re-detect</strong> to choose a different match strategy.
+                    </span>
+                </div>
+
+                <!-- Plain-English rule preview -->
+                <div id="wizRulePreview" class="alert alert-info py-2 px-3 small mt-2" style="display:none;">
+                    <strong>✓ This rule will:</strong> <span id="wizRulePreviewText"></span>
+                </div>
+
+                <!-- Advanced: raw pattern (collapsed by default) -->
+                <div class="mt-2 d-flex justify-content-end">
+                    <button type="button" class="btn btn-link btn-sm p-0 text-muted small" id="wizToggleAdvanced">
+                        ⚙ Advanced — show raw pattern
+                    </button>
+                </div>
+                <div id="wizAdvancedPanel" style="display:none;" class="mt-1">
+                    <label class="form-label small text-muted mb-1">
+                        Raw rule pattern <em class="text-warning">(auto-generated — only edit if you know regex)</em>
+                    </label>
+                    <input type="text" id="generatedPattern" class="form-control form-control-sm font-monospace text-muted"
                            placeholder="Pattern will appear here…" />
-                    <div class="form-text">You can edit this if needed. The highlighted value will be what gets saved.</div>
                 </div>
             </div>
 
@@ -186,36 +228,32 @@
             <!-- Transform options -->
             <div id="transformOptions"></div>
 
-            <!-- Manual regex-remove section (shown for string fields when user wants to add custom noise removal) -->
-            <div id="customRemoveSection" style="display:none;" class="border rounded p-3 mb-3 bg-light">
-                <p class="fw-semibold mb-2 small">➕ Remove a custom pattern</p>
+            <!-- Noise removal section — visual token picker, no regex required -->
+            <div id="customRemoveSection" style="display:none;" class="border rounded p-3 mb-3">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <span class="fw-semibold small">🧹 Still see noise? Click the word(s) you want removed:</span>
+                </div>
                 <p class="text-muted small mb-2">
-                    Enter a regex pattern that matches the <strong>noise text</strong> you want erased from the value.
-                    The pattern is applied to every captured charge description — if it doesn't match, the value is left unchanged.
+                    Click one word to select it. Click a second word to extend the selection.
+                    Then press <strong>Remove</strong> — that text will be stripped from every matching charge description.
                 </p>
-                <div class="mb-2">
-                    <label class="form-label small fw-semibold">Common patterns to try:</label>
-                    <div class="d-flex flex-wrap gap-2">
-                        <button type="button" class="btn btn-outline-secondary btn-sm preset-pattern"
-                                data-pattern="\s*\d{1,2}\/\d{1,2}\/\d{2,4}">📅 MM/DD/YYYY date</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm preset-pattern"
-                                data-pattern="\s*\d{4}-\d{2}-\d{2}">📅 YYYY-MM-DD date</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm preset-pattern"
-                                data-pattern="\s*\d{1,2}\/\d{1,2}\s*[-–]\s*\d{1,2}\/\d{1,2}">📅 MM/DD–MM/DD period</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm preset-pattern"
-                                data-pattern="\s*\(\s*\d{1,2}\/\d{1,2}\s*[-–]\s*\d{1,2}\/\d{1,2}\s*\)">📅 (MM/DD–MM/DD)</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm preset-pattern"
-                                data-pattern="\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\.?\s+\d{1,2},?\s+\d{4}">📅 Month DD, YYYY</button>
-                    </div>
+                <!-- Token badges representing the current raw value -->
+                <div id="noiseTokens" class="border rounded px-2 py-2 bg-white mb-1"
+                     style="font-size:0.85rem;line-height:2.4;word-break:break-all;font-family:monospace;min-height:38px;"></div>
+                <div class="form-text mb-2" id="noiseTokenHint">
+                    Each word is a button — click to mark for removal.
                 </div>
-                <div class="input-group">
-                    <input type="text" id="customPatternInput" class="form-control font-monospace"
-                           placeholder="e.g. \s*\d{1,2}\/\d{1,2}\/\d{4}" />
-                    <button type="button" class="btn btn-primary" id="addCustomPatternBtn">Add Remove Step</button>
+                <!-- Inline preview -->
+                <div id="noiseRemovePreview" class="small mb-2" style="display:none;">
+                    <span class="text-muted">After removal:</span>
+                    <code class="text-success fw-semibold ms-1" id="noiseRemovePreviewText"></code>
                 </div>
-                <div class="mt-2 small text-muted">
-                    Preview: <code id="customPatternPreview">(type a pattern above to see a preview)</code>
-                </div>
+                <!-- Quick-detect one-click buttons (auto-populated from raw value) -->
+                <div id="noiseQuickBtns" class="d-flex flex-wrap gap-2 mb-2"></div>
+                <!-- Action -->
+                <button type="button" class="btn btn-sm btn-danger" id="addNoiseRemoveBtn" style="display:none;">
+                    ➕ Remove selected text from all charges
+                </button>
             </div>
 
             <!-- Preview -->
@@ -250,9 +288,10 @@
     <input type="hidden" name="ConditionSource"    id="hConditionSource" value="line_text" />
     <input type="hidden" name="TargetTable"        id="hTargetTable" />
     <input type="hidden" name="FieldType"          id="hFieldType" />
-    <input type="hidden" name="TransformationsJson" id="hTransforms" />
-    <input type="hidden" name="SortOrder"          id="hSortOrder"       value="10" />
-    <input type="hidden" name="IsActive"           id="hIsActive"        value="true" />
+    <input type="hidden" name="TransformationsJson"    id="hTransforms" />
+    <input type="hidden" name="SortOrder"              id="hSortOrder"              value="10" />
+    <input type="hidden" name="IsActive"               id="hIsActive"               value="true" />
+    <input type="hidden" name="DescriptionLineOffset"  id="hDescriptionLineOffset"  value="-1" />
 </form>
 
 @section Scripts {
@@ -416,6 +455,23 @@ function renderStep2() {
     document.getElementById('step2FieldLabel').textContent = state.fieldDef.label;
     document.getElementById('step2Next').disabled = true;
     document.getElementById('selectedLinePanel').style.display = 'none';
+    // Reset new UX elements
+    document.getElementById('wizTokenPickerWrap').style.display    = 'none';
+    document.getElementById('wizLineTokens').innerHTML             = '';
+    document.getElementById('wizSimpleModeWarning').style.display  = 'none';
+    document.getElementById('wizDatePrefixWarning').style.display  = 'none';
+    document.getElementById('wizRulePreview').style.display        = 'none';
+    document.getElementById('wizAdvancedPanel').style.display      = 'none';
+    document.getElementById('wizToggleAdvanced').textContent       = '⚙ Advanced — show raw pattern';
+    // Reset dynamic labels to defaults
+    document.getElementById('extractedValueLabel').textContent = 'Value to capture';
+    document.getElementById('extractedValueHint').textContent  = 'Edit if the detected value is wrong.';
+    // Reset range selection state
+    state.rangeStartIdx = -1;
+    // Re-enable regex_match option (may have been disabled for boundary types)
+    var rxOpt = document.getElementById('condOptRegexMatch');
+    if (rxOpt) { rxOpt.disabled = false; rxOpt.style.display = ''; }
+    document.getElementById('conditionPickerLabel').textContent = 'What should the rule do?';
 
     var listEl = document.getElementById('pdfLinesList');
 
@@ -533,35 +589,332 @@ function renderStep2() {
     });
 }
 
+// ── Condition picker helper ────────────────────────────────────────────────
+// mode: 'value' | 'match' | 'anchor'
+function setConditionPickerMode(mode) {
+    var sel   = document.getElementById('conditionTypePicker');
+    var rxOpt = document.getElementById('condOptRegexMatch');
+    var lbl   = document.getElementById('conditionPickerLabel');
+
+    if (mode === 'match') {
+        // Boundary / skip rules: no value to extract — only match conditions
+        rxOpt.disabled = true; rxOpt.style.display = 'none';
+        if (sel.value === 'regex_match') sel.value = 'starts_with';
+        lbl.textContent = 'How should this line be matched?';
+    } else if (mode === 'anchor') {
+        // Anchors: only starts_with makes sense
+        rxOpt.disabled = true; rxOpt.style.display = 'none';
+        sel.value = 'starts_with';
+        lbl.textContent = 'How should this line be matched?';
+    } else {
+        // Value fields: all options available
+        rxOpt.disabled = false; rxOpt.style.display = '';
+        lbl.textContent = 'What should the rule do?';
+    }
+    state.conditionType = sel.value;
+}
+
 function onLineSelected(line) {
-    state.selectedLine = line;
-    var ft   = state.fieldDef.fieldType;
-    var val  = detectValue(line, ft);
+    state.selectedLine  = line;
+    state.rangeStartIdx = -1;
+    var ft  = state.fieldDef.fieldType;
+    var val = detectValue(line, ft);
     state.extractedValue = val;
 
     document.getElementById('extractedValue').value = val;
     renderHighlightedLine(line, val);
+
+    if (ft === 'line_anchor' || ft === 'location_anchor') {
+        setConditionPickerMode('anchor');
+        // Anchor mode: user clicks WHERE the context value begins
+        renderWizTokens(line, val, 'anchor');
+
+    } else if (ft === 'skip' || ft === 'section_start' || ft === 'section_end' || ft === 'line_before_price') {
+        // Match-only mode: no value extraction needed
+        var defaultCt = (ft === 'skip' || ft === 'line_before_price') ? 'contains' : 'starts_with';
+        document.getElementById('conditionTypePicker').value = defaultCt;
+        setConditionPickerMode('match');
+        renderWizTokens(line, val, 'match');
+
+    } else {
+        // Value-extracting fields — user clicks the word(s) that ARE the value
+        setConditionPickerMode('value');
+        document.getElementById('conditionTypePicker').value = 'regex_match';
+        state.conditionType = 'regex_match';
+        renderWizTokens(line, val, 'value');
+    }
+
     buildPattern();
 
     document.getElementById('selectedLinePanel').style.display = '';
     document.getElementById('step2Next').disabled = false;
-
-    // Pre-select condition type for anchors/skip/section boundaries
-    if (ft === 'line_anchor' || ft === 'location_anchor') {
-        document.getElementById('conditionTypePicker').value = 'starts_with';
-        state.conditionType = 'starts_with';
-        buildPattern();
-    } else if (ft === 'skip') {
-        document.getElementById('conditionTypePicker').value = 'contains';
-        state.conditionType = 'contains';
-        buildPattern();
-    } else if (ft === 'section_start' || ft === 'section_end') {
-        // Section boundary rules match the whole header/footer line, so starts_with is safest
-        document.getElementById('conditionTypePicker').value = 'starts_with';
-        state.conditionType = 'starts_with';
-        buildPattern();
-    }
 }
+
+// ── Token picker ──────────────────────────────────────────────────────────────
+var WIZ_DATE_IN_PREFIX = [
+    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i,
+    /\b\d{4}\b/,
+    /\d{1,2}\/\d{1,2}\/\d{2,4}/,
+    /\d{1,2}-\d{1,2}-\d{2,4}/,
+];
+
+// ─── Direct range application (no click-event simulation) ──────────────────
+function applyTokenRange(container, tokens, from, to) {
+    var badges = Array.from(container.querySelectorAll('span'));
+    badges.forEach(function (s, si) {
+        delete s.dataset.selected;
+        s.style.background = '#fff';
+        s.style.color      = '#333';
+        s.style.fontWeight = '400';
+        s.style.opacity    = '1';
+    });
+    for (var i = from; i <= to; i++) {
+        if (badges[i]) {
+            badges[i].dataset.selected = '1';
+            badges[i].style.background = '#0d6efd';
+            badges[i].style.color      = '#fff';
+            badges[i].style.fontWeight = '600';
+        }
+    }
+    var newVal = tokens.slice(from, to + 1).join(' ');
+    document.getElementById('extractedValue').value = newVal;
+    state.extractedValue   = newVal;
+    state.rangeStartIdx    = -1;
+    renderHighlightedLine(state.selectedLine, newVal);
+    buildPattern();
+}
+
+// mode: 'anchor' | 'value' | 'match'
+//   anchor → click where context value STARTS; prefix before = pattern
+//   value  → click word(s) that ARE the value; range selection supported
+//   match  → click word(s) that identify the line (boundary/skip); range selection supported
+function renderWizTokens(line, preselectedVal, mode) {
+    var wrap      = document.getElementById('wizTokenPickerWrap');
+    var container = document.getElementById('wizLineTokens');
+    container.innerHTML = '';
+    var tokens = line.trim().split(/\s+/);
+    if (tokens.length < 2 && mode !== 'match') { wrap.style.display = 'none'; return; }
+    if (tokens.length === 0) { wrap.style.display = 'none'; return; }
+
+    var labelEl    = document.getElementById('wizTokenPickerLabel');
+    var hintEl     = document.getElementById('wizTokenPickerHint');
+    var valLabelEl = document.getElementById('extractedValueLabel');
+    var valHintEl  = document.getElementById('extractedValueHint');
+
+    if (mode === 'anchor') {
+        labelEl.innerHTML      = 'Click where the <span class="text-primary fw-bold">phone number / location</span> begins on this line:';
+        hintEl.textContent     = 'Everything before the clicked word becomes the anchor label. The rest is the context value.';
+        valLabelEl.textContent = 'Context value (the phone / location)';
+        valHintEl.textContent  = 'The parser uses this to group charges under the correct line or location.';
+    } else if (mode === 'match') {
+        labelEl.innerHTML      = 'Click the word(s) that <span class="text-warning fw-bold">identify</span> this line — click a second word to extend the selection:';
+        hintEl.innerHTML       = '<strong>Click once</strong> to select a word. <strong>Click another word</strong> to extend the selection. The selected text becomes the match condition.';
+        valLabelEl.textContent = 'Line must contain';
+        valHintEl.textContent  = 'Edit the text that identifies this line.';
+    } else {
+        labelEl.innerHTML      = 'Click the word(s) that are the <span class="text-primary fw-bold">value</span> to capture — click a second word to extend:';
+        hintEl.innerHTML       = '<strong>Click once</strong> to select a single word. <strong>Click another word</strong> to extend the selection across multiple words.';
+        valLabelEl.textContent = 'Value to capture';
+        valHintEl.textContent  = 'Edit if the detected value is wrong.';
+    }
+
+    // Local range-start tracking for this picker instance
+    var pendingStart = -1;
+
+    tokens.forEach(function (tok, idx) {
+        var span = document.createElement('span');
+        span.textContent = tok;
+        span.className   = 'badge border me-1 mb-1';
+        span.style.cssText = 'cursor:pointer;font-size:0.82rem;font-weight:400;background:#fff;color:#333;transition:background .1s;';
+
+        if (mode === 'anchor') {
+            span.title = 'Prefix = "' + tokens.slice(0, idx).join(' ') + '" → context starts at "' + tok + '"';
+        } else {
+            span.title = pendingStart === -1
+                ? 'Click to select "' + tok + '"'
+                : 'Click to extend selection to "' + tok + '"';
+        }
+
+        // ── Hover feedback ─────────────────────────────────────────────────
+        span.addEventListener('mouseenter', function () {
+            if (span.dataset.selected) return;
+            if (mode === 'anchor') {
+                container.querySelectorAll('span').forEach(function (s, si) {
+                    if (!s.dataset.selected) s.style.background = si < idx ? '#fff3cd' : '#fff';
+                });
+                span.style.background = '#e7f0ff';
+            } else if (pendingStart !== -1 && idx !== pendingStart) {
+                // Show preview of range extension
+                var from = Math.min(pendingStart, idx);
+                var to   = Math.max(pendingStart, idx);
+                container.querySelectorAll('span').forEach(function (s, si) {
+                    if (si >= from && si <= to) s.style.background = '#cfe2ff';
+                });
+            } else {
+                span.style.background = '#e7f0ff';
+            }
+        });
+        span.addEventListener('mouseleave', function () {
+            container.querySelectorAll('span').forEach(function (s) {
+                if (!s.dataset.selected) s.style.background = '#fff';
+            });
+            // Re-apply selected highlight
+            container.querySelectorAll('span[data-selected]').forEach(function (s) {
+                s.style.background = '#0d6efd';
+                s.style.color      = '#fff';
+            });
+            // Re-highlight pending-start
+            if (pendingStart !== -1) {
+                var ps = container.querySelectorAll('span')[pendingStart];
+                if (ps) { ps.style.background = '#0d6efd'; ps.style.color = '#fff'; }
+            }
+        });
+
+        // ── Click ──────────────────────────────────────────────────────────
+        span.addEventListener('click', function () {
+
+            if (mode === 'anchor') {
+                // Clear all
+                container.querySelectorAll('span').forEach(function (s, si) {
+                    delete s.dataset.selected;
+                    if (si < idx) {
+                        s.style.background = '#ffc107'; s.style.color = '#000'; s.style.opacity = '0.7';
+                    } else if (si === idx) {
+                        s.dataset.selected = '1';
+                        s.style.background = '#198754'; s.style.color = '#fff'; s.style.fontWeight = '600'; s.style.opacity = '1';
+                    } else {
+                        s.style.background = '#fff'; s.style.color = '#333'; s.style.fontWeight = '400'; s.style.opacity = '1';
+                    }
+                });
+                var newVal = tokens.slice(idx).join(' ');
+                document.getElementById('extractedValue').value = newVal;
+                state.extractedValue = newVal;
+                renderHighlightedLine(line, newVal);
+                buildPattern();
+                return;
+            }
+
+            // value / match modes — range selection
+            if (pendingStart === -1) {
+                // First click: set range start, highlight this token
+                pendingStart = idx;
+                container.querySelectorAll('span').forEach(function (s) {
+                    delete s.dataset.selected;
+                    s.style.background = '#fff'; s.style.color = '#333'; s.style.fontWeight = '400'; s.style.opacity = '1';
+                });
+                span.dataset.selected = '1';
+                span.style.background = '#0d6efd';
+                span.style.color      = '#fff';
+                span.style.fontWeight = '600';
+                var newVal = tok;
+                document.getElementById('extractedValue').value = newVal;
+                state.extractedValue = newVal;
+                state.rangeStartIdx  = idx;
+                renderHighlightedLine(line, newVal);
+                buildPattern();
+                // Update hint to indicate a range can be extended
+                hintEl.innerHTML = '<strong class="text-success">✓ "' + esc(tok) + '" selected.</strong> Click another word to extend the selection, or proceed as-is.';
+            } else if (pendingStart === idx) {
+                // Clicking the same token again — deselect and reset
+                pendingStart = -1;
+                state.rangeStartIdx = -1;
+                container.querySelectorAll('span').forEach(function (s) {
+                    delete s.dataset.selected;
+                    s.style.background = '#fff'; s.style.color = '#333'; s.style.fontWeight = '400'; s.style.opacity = '1';
+                });
+                document.getElementById('extractedValue').value = '';
+                state.extractedValue = '';
+                if (mode === 'match') {
+                    hintEl.innerHTML = '<strong>Click once</strong> to select a word. <strong>Click another word</strong> to extend the selection. The selected text becomes the match condition.';
+                } else {
+                    hintEl.innerHTML = '<strong>Click once</strong> to select a single word. <strong>Click another word</strong> to extend the selection across multiple words.';
+                }
+                renderHighlightedLine(line, '');
+                buildPattern();
+            } else {
+                // Second click on a different token → extend range
+                var from = Math.min(pendingStart, idx);
+                var to   = Math.max(pendingStart, idx);
+                pendingStart = -1;
+                applyTokenRange(container, tokens, from, to);
+                var selectedText = tokens.slice(from, to + 1).join(' ');
+                hintEl.innerHTML = '<strong class="text-success">✓ "' + esc(selectedText) + '" selected.</strong> Click any word to start a new selection.';
+            }
+        });
+
+        container.appendChild(span);
+    });
+
+    // ── Pre-select based on auto-detected value ────────────────────────────
+    if (preselectedVal && tokens.length > 0) {
+        var preVal  = preselectedVal.trim();
+        var joined  = tokens.join(' ');
+        var matchPos = joined.toLowerCase().indexOf(preVal.toLowerCase());
+
+        if (mode === 'anchor') {
+            var firstTok = preVal.split(/\s+/)[0].toLowerCase();
+            var fromIdx  = tokens.findIndex(function (t) { return t.toLowerCase() === firstTok; });
+            if (fromIdx < 0) fromIdx = Math.min(1, tokens.length - 1);
+            // Simulate click
+            var badges = Array.from(container.querySelectorAll('span'));
+            if (badges[fromIdx]) badges[fromIdx].click();
+
+        } else if (matchPos >= 0) {
+            // Map character offset → token index
+            var charPos = 0, fromIdx = 0, toIdx = tokens.length - 1;
+            for (var ti = 0; ti < tokens.length; ti++) {
+                if (charPos <= matchPos) fromIdx = ti;
+                charPos += tokens[ti].length;
+                if (charPos >= matchPos + preVal.length) { toIdx = ti; break; }
+                charPos++; // space
+            }
+            if (fromIdx === toIdx) {
+                // Single token — simulate first click
+                var badges2 = Array.from(container.querySelectorAll('span'));
+                pendingStart = fromIdx;
+                if (badges2[fromIdx]) {
+                    badges2[fromIdx].dataset.selected = '1';
+                    badges2[fromIdx].style.background = '#0d6efd';
+                    badges2[fromIdx].style.color      = '#fff';
+                    badges2[fromIdx].style.fontWeight = '600';
+                }
+                state.rangeStartIdx = fromIdx;
+                document.getElementById('extractedValue').value = tokens[fromIdx];
+                state.extractedValue = tokens[fromIdx];
+            } else {
+                // Multi-token range — apply directly
+                applyTokenRange(container, tokens, fromIdx, toIdx);
+                var selText = tokens.slice(fromIdx, toIdx + 1).join(' ');
+                hintEl.innerHTML = '<strong class="text-success">✓ "' + esc(selText) + '" selected.</strong> Click any word to start a new selection.';
+            }
+        } else {
+            // Fallback: select the last token
+            var badges3 = Array.from(container.querySelectorAll('span'));
+            var li = badges3.length - 1;
+            pendingStart = li;
+            if (badges3[li]) {
+                badges3[li].dataset.selected = '1';
+                badges3[li].style.background = '#0d6efd';
+                badges3[li].style.color      = '#fff';
+                badges3[li].style.fontWeight = '600';
+            }
+            state.rangeStartIdx = li;
+            document.getElementById('extractedValue').value = tokens[li];
+            state.extractedValue = tokens[li];
+        }
+    }
+
+    renderHighlightedLine(line, document.getElementById('extractedValue').value);
+    buildPattern();
+    wrap.style.display = '';
+}
+
+document.getElementById('wizToggleAdvanced').addEventListener('click', function () {
+    var panel   = document.getElementById('wizAdvancedPanel');
+    var showing = panel.style.display !== 'none';
+    panel.style.display = showing ? 'none' : '';
+    this.textContent    = showing ? '⚙ Advanced — show raw pattern' : '⚙ Advanced — hide raw pattern';
+});
 
 function detectValue(line, fieldType) {
     // Date
@@ -589,9 +942,8 @@ function detectValue(line, fieldType) {
     if (fieldType === 'skip') {
         return line.trim();
     }
-    // Section boundary — the whole line IS the matching target.
-    // Return the full line so the wizard uses it as the starts_with / contains value.
-    if (fieldType === 'section_start' || fieldType === 'section_end') {
+    // Section boundary & line_before_price — the whole line IS the matching target.
+    if (fieldType === 'section_start' || fieldType === 'section_end' || fieldType === 'line_before_price') {
         return line.trim();
     }
     // Charge description — return the whole line stripped of trailing amount and noise.
@@ -628,25 +980,30 @@ function buildPattern() {
     state.conditionType = ct;
 
     var pattern = '';
+    var prefix  = '';
+
+    var isBoundary   = (ft === 'skip' || ft === 'section_start' || ft === 'section_end' || ft === 'line_before_price');
+    var isAnchor     = (ft === 'line_anchor' || ft === 'location_anchor');
+    var isValueField = !isBoundary && !isAnchor;
 
     if (ct === 'starts_with' || ct === 'contains' || ct === 'equals') {
-        // For non-regex: pattern IS the condition value
-        // For anchors: use the prefix (everything before the value)
-        if (ft === 'line_anchor' || ft === 'location_anchor') {
+        if (isAnchor) {
             var vi = line.toLowerCase().indexOf(val.toLowerCase());
             pattern = vi > 0 ? line.substring(0, vi).trimEnd() : line;
+            prefix  = pattern;
         } else {
-            pattern = ct === 'contains' ? val : line;
+            // For boundary/skip and simple-match: pattern is the selected text
+            pattern = val || line;
         }
     } else {
-        // regex_match: build capture-group pattern
+        // regex_match — only for value fields
         var valueIdx = val ? line.toLowerCase().indexOf(val.toLowerCase()) : -1;
         if (valueIdx >= 0) {
-            var prefix = line.substring(0, valueIdx).trimEnd();
+            prefix = line.substring(0, valueIdx).trimEnd();
             var escaped = escapeRegex(prefix)
                 .replace(/\\ /g, '\\s+')
                 .replace(/\\\$/g, '\\$?');
-            pattern = escaped + '\\s+\\$?\\s*' + capGroup(ft);
+            pattern = escaped + '\\s+\\$?\\s*' + capGroup(ft, val);
         } else {
             pattern = escapeRegex(line);
         }
@@ -655,11 +1012,59 @@ function buildPattern() {
     state.generatedPattern = pattern;
     document.getElementById('generatedPattern').value = pattern;
     renderHighlightedLine(line, val);
+
+    // ── Plain-English preview ───────────────────────────────────────────────
+    var previewDiv  = document.getElementById('wizRulePreview');
+    var previewSpan = document.getElementById('wizRulePreviewText');
+
+    if (ft === 'skip' && val) {
+        var ml = ct === 'starts_with' ? 'starts with' : (ct === 'contains' ? 'contains' : 'exactly matches');
+        previewSpan.innerHTML = 'Skip any charge line that <strong>' + ml + '</strong> <strong class="text-danger">"' + esc(val) + '"</strong>.';
+        previewDiv.style.display = '';
+    } else if (ft === 'section_start' && val) {
+        var ml2 = ct === 'starts_with' ? 'starts with' : (ct === 'contains' ? 'contains' : 'matches');
+        previewSpan.innerHTML = 'When a line <strong>' + ml2 + '</strong> <strong class="text-success">"' + esc(val) + '"</strong> — start collecting charges below it.';
+        previewDiv.style.display = '';
+    } else if (ft === 'section_end' && val) {
+        var ml3 = ct === 'starts_with' ? 'starts with' : (ct === 'contains' ? 'contains' : 'matches');
+        previewSpan.innerHTML = 'When a line <strong>' + ml3 + '</strong> <strong class="text-warning">"' + esc(val) + '"</strong> — stop collecting charges.';
+        previewDiv.style.display = '';
+    } else if (ft === 'line_before_price' && val) {
+        var ml4 = ct === 'starts_with' ? 'starts with' : (ct === 'contains' ? 'contains' : 'exactly matches');
+        previewSpan.innerHTML = 'When a price line <strong>' + ml4 + '</strong> <strong class="text-primary">"' + esc(val) + '"</strong> — automatically find the <strong>nearest product name above it</strong> and use it as the charge description.';
+        previewDiv.style.display = '';
+    } else if (ct === 'regex_match' && val && isValueField) {
+        if (prefix) {
+            previewSpan.innerHTML = 'Find lines containing <strong>"' + esc(prefix) + '"</strong> and capture the value that follows — currently <strong class="text-success">"' + esc(val) + '"</strong>.';
+        } else {
+            previewSpan.innerHTML = 'Find any line containing <strong class="text-success">"' + esc(val) + '"</strong> and capture it.';
+        }
+        previewDiv.style.display = '';
+    } else if ((ct === 'starts_with' || ct === 'contains' || ct === 'equals') && pattern && isValueField) {
+        var modeLabel = ct === 'starts_with' ? 'start with' : (ct === 'contains' ? 'contain' : 'exactly match');
+        previewSpan.innerHTML = 'Capture the entire line that <strong>' + modeLabel + '</strong> <strong>"' + esc(pattern) + '"</strong>.';
+        previewDiv.style.display = '';
+    } else {
+        previewDiv.style.display = 'none';
+    }
+
+    // ── Date-in-prefix warning ──────────────────────────────────────────────
+    var dateWarn   = document.getElementById('wizDatePrefixWarning');
+    var hasDatePfx = ct === 'regex_match' && prefix &&
+                     WIZ_DATE_IN_PREFIX.some(function (re) { return re.test(prefix); });
+    dateWarn.style.display = hasDatePfx ? '' : 'none';
+
+    // ── Simple-mode warning (only for value-extracting fields) ──────────────
+    var simpleWarn = document.getElementById('wizSimpleModeWarning');
+    simpleWarn.style.display = (ct !== 'regex_match' && isValueField) ? '' : 'none';
 }
 
-function capGroup(fieldType) {
+// Returns a regex capture group appropriate for the field type and captured value
+function capGroup(fieldType, capturedVal) {
     if (fieldType === 'date')    return '([\\d/\\-]+)';
     if (fieldType === 'decimal') return '([\\-\\d,]+\\.\\d{2})';
+    // Multi-word values need a broader group
+    if (capturedVal && capturedVal.indexOf(' ') >= 0) return '([^\\r\\n]+?)';
     return '(\\S+)';
 }
 
@@ -700,19 +1105,30 @@ function renderStep3() {
     var optContainer = document.getElementById('transformOptions');
     optContainer.innerHTML = '';
 
-    // Section boundary rules — show a clear info panel instead of transform options
-    if (ft === 'section_start' || ft === 'section_end') {
-        var isSectionStart = ft === 'section_start';
+    // Section boundary, skip, and line_before_price rules — show info panel, no transforms needed
+    if (ft === 'section_start' || ft === 'section_end' || ft === 'skip' || ft === 'line_before_price') {
+        var infoMap = {
+            section_start: { icon: '▶', title: 'Section Start rule',
+                desc: 'When the parser sees a line matching this condition, it will <strong>start collecting charge rows</strong> below it.' },
+            section_end:   { icon: '■', title: 'Section End rule',
+                desc: 'When the parser sees a line matching this condition, it will <strong>stop collecting charge rows</strong>.' },
+            skip:          { icon: '⊘', title: 'Skip Charge Line rule',
+                desc: 'Any charge line that matches this condition will be <strong>excluded</strong> from the extracted charges.' },
+            line_before_price: null  // handled separately below
+        };
+
+        if (ft === 'line_before_price') {
+            renderLineBeforePriceStep3(optContainer);
+        } else {
+        var info = infoMap[ft];
         optContainer.innerHTML =
             '<div class="alert alert-info">' +
-                '<strong>' + (isSectionStart ? '▶ Section Start rule' : '■ Section End rule') + '</strong> — ' +
-                (isSectionStart
-                    ? 'When the parser sees a line matching this condition, it will <strong>start collecting charge rows</strong> below it.'
-                    : 'When the parser sees a line matching this condition, it will <strong>stop collecting charge rows</strong>.') +
-                '<br/><span class="small text-muted mt-1 d-block">No value extraction or transforms are needed — just save and the boundary will take effect on the next invoice upload.</span>' +
+                '<strong>' + info.icon + ' ' + info.title + '</strong> — ' + info.desc +
+                '<br/><span class="small text-muted mt-1 d-block">No value extraction or transforms are needed — just save and the rule will take effect on the next invoice upload.</span>' +
             '</div>';
+        }
         document.getElementById('customRemoveSection').style.display = 'none';
-        document.getElementById('finalValuePreview').textContent = '(boundary rule — no value)';
+        document.getElementById('finalValuePreview').textContent = '(match-only rule — no value captured)';
         document.getElementById('previewWarning').style.display = 'none';
         return; // skip normal suggestion rendering
     }
@@ -751,78 +1167,217 @@ function renderStep3() {
     document.getElementById('customRemoveSection').style.display = showCustomRemove ? '' : 'none';
 
     if (showCustomRemove) {
-        // One-time wiring (guard against double-binding on goBack + goForward)
-        var customSection = document.getElementById('customRemoveSection');
-        if (!customSection._wired) {
-            customSection._wired = true;
-
-            document.querySelectorAll('.preset-pattern').forEach(function (btn) {
-                btn.addEventListener('click', function () {
-                    var inp = document.getElementById('customPatternInput');
-                    inp.value = this.getAttribute('data-pattern');
-                    inp.dispatchEvent(new Event('input'));
-                });
-            });
-
-            document.getElementById('customPatternInput').addEventListener('input', function () {
-                var pat = this.value.trim();
-                var previewEl = document.getElementById('customPatternPreview');
-                if (!pat) {
-                    previewEl.textContent = '(type a pattern above to see a preview)';
-                    previewEl.style.color = '';
-                    return;
-                }
-                try {
-                    var cleaned = state.extractedValue.replace(new RegExp(pat, 'gi'), '').trim();
-                    previewEl.textContent = '"' + state.extractedValue + '"  →  "' + (cleaned || '(empty)') + '"';
-                    previewEl.style.color = cleaned !== state.extractedValue ? '#198754' : '#6c757d';
-                } catch (e) {
-                    previewEl.textContent = '⚠ Invalid regex: ' + e.message;
-                    previewEl.style.color = '#dc3545';
-                }
-            });
-
-            document.getElementById('addCustomPatternBtn').addEventListener('click', function () {
-                var pat = document.getElementById('customPatternInput').value.trim();
-                if (!pat) return;
-                try { new RegExp(pat); } catch (e) { alert('Invalid regex pattern: ' + e.message); return; }
-
-                // Add as a new active suggestion
-                var newSuggestion = {
-                    id: 'custom_' + Date.now(),
-                    label: 'Remove pattern: <code>' + esc(pat) + '</code>',
-                    description: 'Removes all text matching this regex. Safe to use — if the pattern does not appear in a charge description, the value is left unchanged.',
-                    step: { Type: 'regex_remove', Value1: pat, Value2: null },
-                    preview: state.extractedValue.replace(new RegExp(pat, 'gi'), '').trim(),
-                    defaultOn: true, active: true,
-                };
-                suggestions.push(newSuggestion);
-
-                // Append the new checkbox row
-                var div = document.createElement('div');
-                div.className = 'transform-opt';
-                div.innerHTML =
-                    '<div class="form-check mb-0">' +
-                        '<input class="form-check-input transform-chk" type="checkbox" id="t_' + newSuggestion.id + '" checked />' +
-                        '<label class="form-check-label fw-semibold" for="t_' + newSuggestion.id + '">' + newSuggestion.label + '</label>' +
-                    '</div>' +
-                    '<div class="text-muted small mt-1">' + newSuggestion.description + '</div>' +
-                    '<div class="mt-1 small"><code>' + esc(state.extractedValue) + '</code> → <code class="text-success">' + esc(newSuggestion.preview) + '</code></div>';
-                div.querySelector('.transform-chk').addEventListener('change', function () {
-                    newSuggestion.active = this.checked;
-                    rebuildTransforms(suggestions);
-                });
-                document.getElementById('transformOptions').appendChild(div);
-
-                rebuildTransforms(suggestions);
-
-                // Reset input
-                document.getElementById('customPatternInput').value = '';
-                document.getElementById('customPatternPreview').textContent = '(type a pattern above to see a preview)';
-                document.getElementById('customPatternPreview').style.color = '';
-            });
-        }
+        renderNoiseTokenPicker(raw, suggestions);
     }
+}
+
+// ── Noise token picker — visual removal, no regex required ───────────────────
+function renderNoiseTokenPicker(raw, suggestions) {
+    var container   = document.getElementById('noiseTokens');
+    var hintEl      = document.getElementById('noiseTokenHint');
+    var previewEl   = document.getElementById('noiseRemovePreview');
+    var previewText = document.getElementById('noiseRemovePreviewText');
+    var addBtn      = document.getElementById('addNoiseRemoveBtn');
+    var quickBtns   = document.getElementById('noiseQuickBtns');
+
+    container.innerHTML = '';
+    quickBtns.innerHTML = '';
+    previewEl.style.display = 'none';
+    addBtn.style.display    = 'none';
+    hintEl.textContent = 'Each word is a button — click to mark for removal.';
+
+    var tokens = raw.trim().split(/\s+/);
+    if (tokens.length === 0) return;
+
+    var noiseStart = -1;   // index of first selected token
+
+    // ── Render token badges ──────────────────────────────────────────────────
+    tokens.forEach(function (tok, idx) {
+        var span = document.createElement('span');
+        span.textContent = tok;
+        span.className   = 'badge border me-1 mb-1';
+        span.style.cssText = 'cursor:pointer;font-size:0.85rem;font-weight:400;background:#fff;color:#333;transition:background .1s;';
+
+        span.addEventListener('mouseenter', function () {
+            if (span.dataset.selected) return;
+            if (noiseStart !== -1 && idx !== noiseStart) {
+                // Preview range extension on hover
+                var from = Math.min(noiseStart, idx), to = Math.max(noiseStart, idx);
+                container.querySelectorAll('span').forEach(function (s, si) {
+                    if (si >= from && si <= to && !s.dataset.selected) s.style.background = '#fecaca';
+                });
+            } else {
+                span.style.background = '#fecaca';
+            }
+        });
+        span.addEventListener('mouseleave', function () {
+            container.querySelectorAll('span').forEach(function (s) {
+                if (!s.dataset.selected) s.style.background = '#fff';
+            });
+            container.querySelectorAll('span[data-selected]').forEach(function (s) {
+                s.style.background = '#ef4444'; s.style.color = '#fff';
+            });
+        });
+
+        span.addEventListener('click', function () {
+            if (noiseStart === -1) {
+                // First click — mark start
+                noiseStart = idx;
+                container.querySelectorAll('span').forEach(function (s) {
+                    delete s.dataset.selected;
+                    s.style.background = '#fff'; s.style.color = '#333'; s.style.textDecoration = '';
+                });
+                span.dataset.selected = '1';
+                span.style.background = '#ef4444'; span.style.color = '#fff';
+                span.style.textDecoration = 'line-through';
+
+                var sel = tokens[idx];
+                previewText.textContent = raw.replace(new RegExp(escapeRegex(sel), 'gi'), '').replace(/\s{2,}/g, ' ').trim() || '(empty)';
+                previewEl.style.display = '';
+                addBtn.style.display    = '';
+                addBtn.dataset.pattern  = escapeRegex(sel);
+                addBtn.dataset.label    = 'Remove "' + sel + '"';
+                hintEl.innerHTML = '<strong class="text-danger">"' + esc(sel) + '"</strong> selected. Click another word to extend the selection, or press Remove.';
+
+            } else if (noiseStart === idx) {
+                // Deselect
+                noiseStart = -1;
+                container.querySelectorAll('span').forEach(function (s) {
+                    delete s.dataset.selected;
+                    s.style.background = '#fff'; s.style.color = '#333'; s.style.textDecoration = '';
+                });
+                previewEl.style.display = 'none';
+                addBtn.style.display    = 'none';
+                hintEl.textContent = 'Each word is a button — click to mark for removal.';
+
+            } else {
+                // Second click — extend range
+                var from = Math.min(noiseStart, idx), to = Math.max(noiseStart, idx);
+                noiseStart = -1;
+                container.querySelectorAll('span').forEach(function (s, si) {
+                    delete s.dataset.selected;
+                    if (si >= from && si <= to) {
+                        s.dataset.selected = '1';
+                        s.style.background = '#ef4444'; s.style.color = '#fff'; s.style.textDecoration = 'line-through';
+                    } else {
+                        s.style.background = '#fff'; s.style.color = '#333'; s.style.textDecoration = '';
+                    }
+                });
+                var selText = tokens.slice(from, to + 1).join(' ');
+                var pat     = escapeRegex(selText);
+                previewText.textContent = raw.replace(new RegExp(pat, 'gi'), '').replace(/\s{2,}/g, ' ').trim() || '(empty)';
+                previewEl.style.display = '';
+                addBtn.style.display    = '';
+                addBtn.dataset.pattern  = pat;
+                addBtn.dataset.label    = 'Remove "' + selText + '"';
+                hintEl.innerHTML = '<strong class="text-danger">"' + esc(selText) + '"</strong> selected. Press Remove or click again to change.';
+            }
+        });
+
+        container.appendChild(span);
+    });
+
+    // ── "Remove" button handler ─────────────────────────────────────────────
+    // Guard: re-wire once per renderStep3 call by checking a marker
+    var marker = 'noiseRemoveSection';
+    var section = document.getElementById('customRemoveSection');
+    if (section._noiseWired) {
+        // Already wired — just update addBtn (it has dataset.pattern set per click)
+    } else {
+        section._noiseWired = true;
+        addBtn.addEventListener('click', function () {
+            var pat   = addBtn.dataset.pattern;
+            var label = addBtn.dataset.label || 'Remove noise';
+            if (!pat) return;
+
+            var currentRaw = state.extractedValue;
+            var preview    = currentRaw.replace(new RegExp(pat, 'gi'), '').replace(/\s{2,}/g, ' ').trim();
+
+            var newSugg = {
+                id:          'noise_' + Date.now(),
+                label:       label,
+                description: 'Removes this text from every captured charge description. Safe — if not found, the value is left unchanged.',
+                step:        { Type: 'regex_remove', Value1: pat, Value2: null },
+                preview:     preview,
+                defaultOn:   true,
+                active:      true,
+            };
+            suggestions.push(newSugg);
+
+            // Append checkbox row to transformOptions
+            var div = document.createElement('div');
+            div.className = 'transform-opt';
+            div.innerHTML =
+                '<div class="form-check mb-0">' +
+                    '<input class="form-check-input transform-chk" type="checkbox" id="t_' + newSugg.id + '" checked />' +
+                    '<label class="form-check-label fw-semibold" for="t_' + newSugg.id + '">' + esc(label) + '</label>' +
+                '</div>' +
+                '<div class="text-muted small mt-1">' + newSugg.description + '</div>' +
+                '<div class="mt-1 small"><code>' + esc(currentRaw) + '</code> → <code class="text-success">' + esc(preview) + '</code></div>';
+            div.querySelector('.transform-chk').addEventListener('change', function () {
+                newSugg.active = this.checked;
+                rebuildTransforms(suggestions);
+            });
+            document.getElementById('transformOptions').appendChild(div);
+            rebuildTransforms(suggestions);
+
+            // Reset picker
+            noiseStart = -1;
+            container.querySelectorAll('span').forEach(function (s) {
+                delete s.dataset.selected;
+                s.style.background = '#fff'; s.style.color = '#333'; s.style.textDecoration = '';
+            });
+            previewEl.style.display = 'none';
+            addBtn.style.display    = 'none';
+            hintEl.textContent = 'Word removed ✓ Click another word to remove more.';
+        });
+    }
+
+    // ── Quick-detect one-click buttons from raw value ────────────────────────
+    var QUICK = [
+        { re: /\d{1,2}\/\d{1,2}\/\d{2,4}/g,                     icon: '📅', label: 'Remove dates',         pat: '\\s*\\d{1,2}\\/\\d{1,2}\\/\\d{2,4}' },
+        { re: /\d{4}-\d{2}-\d{2}/g,                              icon: '📅', label: 'Remove dates',         pat: '\\s*\\d{4}-\\d{2}-\\d{2}' },
+        { re: /\d{1,2}\/\d{1,2}\s*[-–]\s*\d{1,2}\/\d{1,2}/g,    icon: '📅', label: 'Remove date ranges',   pat: '\\s*\\d{1,2}\\/\\d{1,2}\\s*[-\\u2013]\\s*\\d{1,2}\\/\\d{1,2}' },
+        { re: /\b\d{3,}\b/g,                                     icon: '🔢', label: 'Remove numbers',       pat: null },  // generated dynamically
+    ];
+
+    QUICK.forEach(function (q) {
+        var matches = raw.match(q.re);
+        if (!matches || matches.length === 0) return;
+        var uniq = matches.map(function (m) { return m.trim(); }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+        var pat  = q.pat || uniq.map(escapeRegex).join('|');
+        var lbl  = uniq.length <= 3 ? q.icon + ' Remove ' + uniq.join(', ') : q.icon + ' ' + q.label;
+        var preview = raw.replace(new RegExp(pat, 'gi'), '').replace(/\s{2,}/g, ' ').trim();
+        if (preview === raw) return; // nothing changes
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-outline-danger btn-sm';
+        btn.textContent = lbl;
+        btn.addEventListener('click', function () {
+            var newSugg = {
+                id: 'quick_' + Date.now(), label: lbl,
+                description: 'Removes these values from every captured charge description.',
+                step: { Type: 'regex_remove', Value1: pat, Value2: null },
+                preview: preview, defaultOn: true, active: true,
+            };
+            suggestions.push(newSugg);
+            var div = document.createElement('div');
+            div.className = 'transform-opt';
+            div.innerHTML =
+                '<div class="form-check mb-0">' +
+                    '<input class="form-check-input transform-chk" type="checkbox" id="t_' + newSugg.id + '" checked />' +
+                    '<label class="form-check-label fw-semibold" for="t_' + newSugg.id + '">' + esc(lbl) + '</label>' +
+                '</div>' +
+                '<div class="text-muted small mt-1">' + newSugg.description + '</div>' +
+                '<div class="mt-1 small"><code>' + esc(raw) + '</code> → <code class="text-success">' + esc(preview) + '</code></div>';
+            div.querySelector('.transform-chk').addEventListener('change', function () { newSugg.active = this.checked; rebuildTransforms(suggestions); });
+            document.getElementById('transformOptions').appendChild(div);
+            rebuildTransforms(suggestions);
+            btn.disabled = true; btn.textContent += ' ✓';
+        });
+        quickBtns.appendChild(btn);
+    });
 }
 
 function buildTransformSuggestions(fieldType, raw, conditionType) {
@@ -866,9 +1421,9 @@ function buildTransformSuggestions(fieldType, raw, conditionType) {
         // No transforms needed for skip rules
     }
 
-    if (fieldType === 'section_start' || fieldType === 'section_end') {
-        // Section boundaries are pure condition rules — no value is extracted, no transforms needed.
-        // Return empty so the wizard shows "No cleanup needed — value saved as-is."
+    if (fieldType === 'section_start' || fieldType === 'section_end' || fieldType === 'line_before_price') {
+        // Pure condition rules — no value extracted, no transforms needed.
+        return s;
     }
 
     if (fieldType === 'string') {
@@ -1056,6 +1611,178 @@ function tryConvertDate(val) {
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
+// ── Line Before Price — Step 3 picker ─────────────────────────────────────────
+// Shows the real lines above the trigger from PDF_LINES.
+// Multiple lines can be checked and are joined as one charge description.
+function renderLineBeforePriceStep3(container) {
+    var trigIdx = typeof state.selectedLineIdx === 'number' ? state.selectedLineIdx : -1;
+
+    // Gather up to 6 non-empty lines above the trigger (offset 1 = immediately above)
+    var candidates = [];
+    if (trigIdx > 0 && PDF_LINES.length > 0) {
+        for (var i = trigIdx - 1; i >= 0 && candidates.length < 6; i--) {
+            var txt = PDF_LINES[i].trim();
+            if (txt.length >= 2) candidates.push({ offset: trigIdx - i, text: txt });
+        }
+    }
+
+    // ── build HTML ──────────────────────────────────────────────────────────
+    var html =
+        '<div class="border rounded p-3 bg-light">' +
+        '<p class="fw-semibold mb-1 text-primary">↑ Line Before Price rule</p>' +
+        '<p class="small text-muted mb-3">' +
+        'Tick one or more lines above the trigger to use as the <strong>charge description</strong>. ' +
+        'Ticking multiple lines <strong>joins them together</strong>. ' +
+        'The last dollar amount on the trigger line becomes the charge amount.' +
+        '</p>';
+
+    if (candidates.length === 0) {
+        html +=
+            '<div class="alert alert-warning small py-2 mb-2">No invoice lines available — auto-detect will be used when the invoice is parsed.</div>' +
+            '<div class="form-check mb-1">' +
+            '<input class="form-check-input lbp-auto-chk" type="checkbox" id="lbpAuto" checked />' +
+            '<label class="form-check-label small fw-semibold" for="lbpAuto">Auto-detect — automatically find the nearest product name above this line</label>' +
+            '</div>';
+    } else {
+        // Lines table: furthest-above at top, trigger at bottom
+        html += '<div class="border rounded bg-white mb-2" style="overflow:hidden;">';
+
+        var sorted = candidates.slice().sort(function (a, b) { return b.offset - a.offset; });
+        sorted.forEach(function (c, si) {
+            var cbId = 'lbpLine_' + si;
+            var safeText = c.text.replace(/"/g, '&quot;');
+            html +=
+                '<div class="d-flex align-items-center gap-2 px-3 py-2 lbp-line-row border-bottom" ' +
+                     'data-offset="' + c.offset + '" data-text="' + safeText + '" style="cursor:pointer;">' +
+                '<input class="form-check-input lbp-line-chk flex-shrink-0 mt-0" type="checkbox" id="' + cbId + '" style="pointer-events:none;" />' +
+                '<label class="form-check-label small font-monospace mb-0 flex-grow-1 user-select-none" for="' + cbId + '" style="cursor:pointer;">' +
+                esc(c.text.length > 100 ? c.text.substring(0, 100) + '\u2026' : c.text) +
+                '</label>' +
+                '</div>';
+        });
+
+        // Trigger line (non-selectable)
+        var trigText = state.selectedLine.trim();
+        html +=
+            '<div class="px-3 py-2 d-flex align-items-center gap-2" style="background:#dbeafe;">' +
+            '<span class="badge bg-primary flex-shrink-0">trigger</span>' +
+            '<span class="small font-monospace fw-semibold text-primary">' +
+            esc(trigText.length > 100 ? trigText.substring(0,100)+'\u2026' : trigText) +
+            '</span>' +
+            '</div>';
+        html += '</div>';
+
+        // Auto-detect (separator choice)
+        html +=
+            '<div class="form-check mb-2" style="cursor:pointer;">' +
+            '<input class="form-check-input lbp-auto-chk" type="checkbox" id="lbpAuto" />' +
+            '<label class="form-check-label small" for="lbpAuto" style="cursor:pointer;">' +
+            '<strong>Auto-detect</strong> — let the system find the nearest product name automatically ' +
+            '<span class="text-muted">(best when lines vary between invoices)</span>' +
+            '</label></div>';
+    }
+
+    // Final value preview
+    html +=
+        '<div class="mt-1 px-3 py-2 border rounded" style="background:#f0fdf4; min-height:42px;">' +
+        '<span class="small text-muted d-block mb-1">Final value that will be captured as charge description:</span>' +
+        '<span class="fw-semibold text-success" id="lbpFinalValue" style="font-size:1rem;">(tick a line above)</span>' +
+        '</div>' +
+        '<p class="text-muted small mt-2 mb-0">No extra transforms needed — just save and the rule takes effect on the next invoice upload.</p>' +
+        '</div>';
+
+    container.innerHTML = html;
+
+    // ── refresh logic: called whenever any checkbox changes ──────────────────
+    function refresh() {
+        var autoChk  = container.querySelector('#lbpAuto');
+        var lineChks = Array.from(container.querySelectorAll('.lbp-line-chk'));
+        var anyLine  = lineChks.some(function (c) { return c.checked; });
+        var preview  = document.getElementById('lbpFinalValue');
+
+        // Highlight selected rows
+        container.querySelectorAll('.lbp-line-row').forEach(function (row) {
+            var cb = row.querySelector('.lbp-line-chk');
+            row.style.background = (cb && cb.checked) ? '#eff6ff' : '';
+        });
+
+        if (!anyLine && !(autoChk && autoChk.checked)) {
+            // Nothing selected
+            document.getElementById('hFieldType').value             = 'line_before_price';
+            document.getElementById('hFieldName').value             = 'line_before_price';
+            document.getElementById('hDescriptionLineOffset').value = '-1';
+            document.getElementById('hTransforms').value            = '';
+            if (preview) { preview.textContent = '(tick a line above)'; preview.style.color = '#6c757d'; }
+            return;
+        }
+
+        if ((autoChk && autoChk.checked) && !anyLine) {
+            // Auto mode
+            document.getElementById('hFieldType').value             = 'line_before_price';
+            document.getElementById('hFieldName').value             = 'line_before_price';
+            document.getElementById('hDescriptionLineOffset').value = '-1';
+            document.getElementById('hTransforms').value            = '';
+            if (preview) { preview.textContent = 'auto-detected from invoice'; preview.style.color = '#198754'; }
+            return;
+        }
+
+        // One or more specific lines selected — sort by offset descending (top line first)
+        var selected = lineChks
+            .filter(function (c) { return c.checked; })
+            .map(function (c) { return {
+                offset: parseInt(c.closest('.lbp-line-row').getAttribute('data-offset')),
+                text:   c.closest('.lbp-line-row').getAttribute('data-text')
+            }; })
+            .sort(function (a, b) { return b.offset - a.offset; });
+
+        var topOffset  = selected[0].offset;
+        var joinCount  = selected.length - 1;
+
+        // Build transforms: join_next_line for each additional line + final trim
+        var transforms = [];
+        for (var j = 0; j < joinCount; j++) {
+            transforms.push({ Type: 'join_next_line', Value1: ' ', Value2: null });
+        }
+        transforms.push({ Type: 'trim', Value1: null, Value2: null });
+
+        document.getElementById('hFieldType').value             = 'table_row';
+        document.getElementById('hFieldName').value             = 'charge_desc';
+        document.getElementById('hDescriptionLineOffset').value = '-' + topOffset;
+        document.getElementById('hTransforms').value            = JSON.stringify(transforms);
+
+        var joined = selected.map(function (s) { return s.text; }).join(' ');
+        if (preview) { preview.textContent = joined; preview.style.color = '#198754'; }
+    }
+
+    // Wire line row clicks
+    container.querySelectorAll('.lbp-line-row').forEach(function (row) {
+        row.addEventListener('click', function () {
+            var cb = row.querySelector('.lbp-line-chk');
+            if (!cb) return;
+            cb.checked = !cb.checked;
+            // Uncheck auto if any line is now checked
+            var autoChk = container.querySelector('#lbpAuto');
+            if (cb.checked && autoChk) autoChk.checked = false;
+            refresh();
+        });
+    });
+
+    // Wire auto-detect checkbox
+    var autoEl = container.querySelector('#lbpAuto');
+    if (autoEl) {
+        autoEl.addEventListener('change', function () {
+            if (this.checked) {
+                // Uncheck all line checkboxes
+                container.querySelectorAll('.lbp-line-chk').forEach(function (c) { c.checked = false; });
+            }
+            refresh();
+        });
+    }
+
+    // Start with nothing selected (prompt user to tick)
+    refresh();
+}
+
 document.getElementById('step3Back').addEventListener('click', function () { goTo(2); });
 
 // ═══ SAVE ────────────────────────────────────────────────────────────────────
@@ -1068,9 +1795,14 @@ document.getElementById('saveWizardBtn').addEventListener('click', function () {
     var fd = state.fieldDef;
 
     // Populate hidden form
-    document.getElementById('hFieldName').value    = fd.fieldName;
-    document.getElementById('hTargetTable').value  = fd.targetTable;
-    document.getElementById('hFieldType').value    = fd.fieldType;
+    // For line_before_price, hFieldName/hFieldType may already have been overridden
+    // by the radio picker in renderLineBeforePriceStep3 — only set if not already changed.
+    if (fd.fieldType !== 'line_before_price' ||
+        document.getElementById('hFieldType').value === '') {
+        document.getElementById('hFieldName').value  = fd.fieldName;
+        document.getElementById('hFieldType').value  = fd.fieldType;
+    }
+    document.getElementById('hTargetTable').value   = fd.targetTable;
     document.getElementById('hConditionType').value = state.conditionType;
     document.getElementById('hRegexPattern').value  = state.generatedPattern;
     document.getElementById('hTransforms').value    = state.transforms.length > 0

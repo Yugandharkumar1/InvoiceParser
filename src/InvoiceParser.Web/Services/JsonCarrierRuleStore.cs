@@ -55,15 +55,10 @@ public sealed class JsonCarrierRuleStore : ICarrierRuleStore
         return all;
     }
 
-    public async Task<VendorParsingRule?> GetRuleByIdAsync(int id)
+    public async Task<VendorParsingRule?> GetRuleByIdAsync(int carrierId, int id)
     {
-        foreach (var file in Directory.EnumerateFiles(_baseDir, "*.rules.json"))
-        {
-            if (!int.TryParse(Path.GetFileName(file).Split('.')[0], out var cid)) continue;
-            var rule = (await LoadAsync(cid)).FirstOrDefault(r => r.Id == id);
-            if (rule != null) return rule;
-        }
-        return null;
+        var rules = await LoadAsync(carrierId);
+        return rules.FirstOrDefault(r => r.Id == id);
     }
 
     public async Task<VendorParsingRule> AddRuleAsync(VendorParsingRule rule)
@@ -101,29 +96,116 @@ public sealed class JsonCarrierRuleStore : ICarrierRuleStore
         finally { sem.Release(); }
     }
 
-    public async Task DeleteRuleAsync(int id)
+    public async Task DeleteRuleAsync(int carrierId, int id)
     {
-        // Need to find which carrier owns this rule first.
-        foreach (var file in Directory.EnumerateFiles(_baseDir, "*.rules.json"))
+        var sem = GetLock(carrierId);
+        await sem.WaitAsync();
+        try
         {
-            if (!int.TryParse(Path.GetFileName(file).Split('.')[0], out var cid)) continue;
-
-            var sem = GetLock(cid);
-            await sem.WaitAsync();
-            try
+            var rules = await LoadRawAsync(carrierId);
+            var removed = rules.RemoveAll(r => r.Id == id);
+            if (removed > 0)
             {
-                var rules = await LoadRawAsync(cid);
-                var removed = rules.RemoveAll(r => r.Id == id);
-                if (removed > 0)
-                {
-                    await SaveRawAsync(cid, rules);
-                    _logger.LogInformation("Deleted rule {Id} from carrier {CarrierId}", id, cid);
-                    return;
-                }
+                await SaveRawAsync(carrierId, rules);
+                _logger.LogInformation("Deleted rule {Id} from carrier {CarrierId}", id, carrierId);
             }
-            finally { sem.Release(); }
+            else
+            {
+                _logger.LogWarning("DeleteRuleAsync: rule {Id} not found in carrier {CarrierId}", id, carrierId);
+            }
         }
-        _logger.LogWarning("DeleteRuleAsync: rule {Id} not found in any carrier file", id);
+        finally { sem.Release(); }
+    }
+
+    // ─── Detection keywords ────────────────────────────────────────────────────
+
+    private string KeywordsFilePath(int carrierId) => Path.Combine(_baseDir, $"{carrierId}.detection.json");
+
+    public async Task<List<string>> GetDetectionKeywordsAsync(int carrierId)
+    {
+        var path = KeywordsFilePath(carrierId);
+        if (!File.Exists(path)) return new List<string>();
+        try
+        {
+            var json = await File.ReadAllTextAsync(path);
+            return JsonSerializer.Deserialize<List<string>>(json, _jsonOpts) ?? new List<string>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to read detection keywords file {Path}", path);
+            return new List<string>();
+        }
+    }
+
+    public async Task SaveDetectionKeywordsAsync(int carrierId, List<string> keywords)
+    {
+        var sem = GetLock(carrierId);
+        await sem.WaitAsync();
+        try
+        {
+            var path = KeywordsFilePath(carrierId);
+            var clean = keywords
+                .Select(k => k.Trim())
+                .Where(k => k.Length >= 2)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(k => k)
+                .ToList();
+            var json = JsonSerializer.Serialize(clean, _jsonOpts);
+            await File.WriteAllTextAsync(path, json);
+            _logger.LogInformation("Saved {Count} detection keywords for carrier {CarrierId}", clean.Count, carrierId);
+        }
+        finally { sem.Release(); }
+    }
+
+    // ─── Skipped summary fields ────────────────────────────────────────────────
+
+    private string SkippedFieldsFilePath(int carrierId) => Path.Combine(_baseDir, $"{carrierId}.skipped.json");
+
+    public async Task<List<string>> GetSkippedSummaryFieldsAsync(int carrierId)
+    {
+        var path = SkippedFieldsFilePath(carrierId);
+        if (!File.Exists(path)) return new List<string>();
+        try
+        {
+            var json = await File.ReadAllTextAsync(path);
+            return JsonSerializer.Deserialize<List<string>>(json, _jsonOpts) ?? new List<string>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to read skipped fields file {Path}", path);
+            return new List<string>();
+        }
+    }
+
+    public async Task AddSkippedSummaryFieldsAsync(int carrierId, IEnumerable<string> fieldNames)
+    {
+        var sem = GetLock(carrierId);
+        await sem.WaitAsync();
+        try
+        {
+            var path = SkippedFieldsFilePath(carrierId);
+            var existing = new List<string>();
+            if (File.Exists(path))
+            {
+                try
+                {
+                    var raw = await File.ReadAllTextAsync(path);
+                    existing = JsonSerializer.Deserialize<List<string>>(raw, _jsonOpts) ?? new List<string>();
+                }
+                catch { /* start fresh */ }
+            }
+
+            var merged = existing
+                .Concat(fieldNames.Select(f => f.Trim()).Where(f => f.Length > 0))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(f => f)
+                .ToList();
+
+            var json = JsonSerializer.Serialize(merged, _jsonOpts);
+            await File.WriteAllTextAsync(path, json);
+            _logger.LogInformation("Saved skipped summary fields for carrier {CarrierId}: {Fields}", carrierId, string.Join(", ", merged));
+        }
+        finally { sem.Release(); }
     }
 
     // ─── Helpers ───────────────────────────────────────────────────────────────

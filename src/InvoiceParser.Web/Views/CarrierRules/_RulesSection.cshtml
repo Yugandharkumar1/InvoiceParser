@@ -28,39 +28,49 @@
             <table class="table table-hover table-sm mb-0 align-middle">
                 <thead class="table-light">
                     <tr>
-                        <th style="width:4%">#</th>
                         <th style="width:18%">Field</th>
-                        <th style="width:12%">Match Type</th>
-                        <th style="width:30%">Pattern / Value</th>
+                        <th style="width:13%">Match Type</th>
+                        <th>Matches When</th>
                         <th style="width:16%">Transforms</th>
                         <th style="width:7%">Stats</th>
                         <th style="width:6%">On/Off</th>
-                        <th style="width:7%"></th>
+                        <th style="width:10%"></th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach (var rule in rules.OrderBy(r => r.SortOrder))
                     {
                         <tr class="@(rule.IsActive ? "" : "table-secondary text-muted")">
-                            <td class="text-center small">@rule.SortOrder</td>
                             <td>
-                                <code class="small">@rule.FieldName</code>
+                                <span class="fw-semibold small">@FriendlyFieldName(rule.FieldName)</span>
                                 @if (!string.IsNullOrWhiteSpace(rule.FieldType) && rule.FieldType != "string")
                                 {
-                                    <span class="badge ms-1 @FieldTypeBadge(rule.FieldType) small">@rule.FieldType</span>
+                                    <span class="badge ms-1 @FieldTypeBadge(rule.FieldType) small">@FriendlyFieldType(rule.FieldType)</span>
                                 }
                             </td>
                             <td>
                                 <span class="badge @ConditionBadge(rule.ConditionType) small">
-                                    @(rule.ConditionType ?? "regex_match")
+                                    @FriendlyMatchType(rule.ConditionType)
                                 </span>
                             </td>
                             <td>
-                                <code class="small text-break" style="word-break:break-all;max-width:260px;display:inline-block;">
-                                    @rule.RegexPattern
-                                </code>
+                                <span class="small" title="@rule.RegexPattern">
+                                    @ReadablePattern(rule.RegexPattern)
+                                </span>
+                                @if (rule.FieldType == "table_row")
+                                {
+                                    <br /><span class="text-muted" style="font-size:.72rem;">
+                                        Description: @Math.Abs(rule.DescriptionLineOffset) line(s) above
+                                    </span>
+                                }
+                                @if (rule.FieldType == "line_before_price")
+                                {
+                                    <br /><span class="text-muted" style="font-size:.72rem;">
+                                        Auto-finds product name above trigger line
+                                    </span>
+                                }
                             </td>
-                            <td class="small text-muted">@TransformSummary(rule.TransformationsJson)</td>
+                            <td class="small text-muted">@FriendlyTransforms(rule.TransformationsJson)</td>
                             <td class="text-center small">
                                 <span class="text-success" title="Successes">@rule.SuccessCount ✓</span>
                                 @if (rule.FailCount > 0)
@@ -70,11 +80,12 @@
                             </td>
                             <td class="text-center">
                                 <form asp-controller="CarrierRules" asp-action="Toggle"
-                                      asp-route-id="@rule.Id" method="post" class="d-inline">
+                                      asp-route-id="@rule.Id" asp-route-carrierId="@carrierId"
+                                      method="post" class="d-inline">
                                     @Html.AntiForgeryToken()
                                     <button type="submit"
                                             class="btn btn-sm @(rule.IsActive ? "btn-success" : "btn-outline-secondary")"
-                                            title="@(rule.IsActive ? "Click to disable" : "Click to enable")">
+                                            title="@(rule.IsActive ? "Click to disable this rule" : "Click to enable this rule")">
                                         @(rule.IsActive ? "On" : "Off")
                                     </button>
                                 </form>
@@ -83,16 +94,16 @@
                                 <div class="d-flex gap-1 justify-content-center">
                                     <a asp-controller="CarrierRules" asp-action="Edit"
                                        asp-route-id="@rule.Id"
+                                       asp-route-carrierId="@carrierId"
                                        class="btn btn-sm btn-outline-primary">Edit</a>
-                                    @if (Model.ShowDeleteBtn)
-                                    {
-                                        <form asp-controller="CarrierRules" asp-action="Delete"
-                                              asp-route-id="@rule.Id" method="post" class="d-inline"
-                                              onsubmit="return confirm('Delete this rule?')">
-                                            @Html.AntiForgeryToken()
-                                            <button type="submit" class="btn btn-sm btn-outline-danger">Del</button>
-                                        </form>
-                                    }
+                                    <form asp-controller="CarrierRules" asp-action="Delete"
+                                          asp-route-id="@rule.Id" asp-route-carrierId="@carrierId"
+                                          method="post" class="d-inline"
+                                          onsubmit="return confirm('Delete the rule for \'@FriendlyFieldName(rule.FieldName)\'?\n\nThis cannot be undone.')">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                title="Delete this rule">Delete</button>
+                                    </form>
                                 </div>
                             </td>
                         </tr>
@@ -104,6 +115,143 @@
 </div>
 
 @functions {
+    // ── Friendly field name labels ─────────────────────────────────────────────
+    string FriendlyFieldName(string? name) => (name ?? "") switch
+    {
+        "invoice_number"   => "Invoice Number",
+        "carrier_account"  => "Account Number",
+        "invoice_date"     => "Invoice Date",
+        "invoice_st_dtm"   => "Statement Start Date",
+        "invoice_end_dtm"  => "Statement End Date",
+        "invoice_due_dtm"  => "Due Date",
+        "beg_bal"          => "Previous Balance",
+        "payment"          => "Payments",
+        "prev_adj"         => "Previous Adjustments",
+        "curr_adj"         => "Current Adjustments",
+        "curr_chg"         => "Current Charges",
+        "curr_tax"         => "Taxes & Surcharges",
+        "end_bal"          => "Balance Due",
+        "charge_desc"      => "Charge Description",
+        "amount"           => "Charge Amount",
+        "line"             => "Line Number",
+        "location"         => "Location",
+        "account_number"   => "Account Number",
+        "section_start"    => "Section Start",
+        "section_end"      => "Section End",
+        "skip"             => "Skip Line",
+        "table_row"        => "Table Row",
+        "line_anchor"      => "Line Anchor",
+        "location_anchor"  => "Location Anchor",
+        "usoc_name"        => "Service Name",
+        "usage_limit"      => "Usage Limit",
+        "usage"            => "Usage Amount",
+        "charge"           => "Usage Charge",
+        "usagetype"        => "Usage Type",
+        "line_number"      => "Line Number",
+        "reference_number" => "Reference Number",
+        "service_type"     => "Service Type",
+        "inventory_name"   => "Inventory Name",
+        "employee_name"    => "Employee Name",
+        "location_name"    => "Location",
+        var other          => System.Globalization.CultureInfo.CurrentCulture
+                                .TextInfo.ToTitleCase(other.Replace("_", " ")),
+    };
+
+    // ── Friendly match type labels ─────────────────────────────────────────────
+    string FriendlyMatchType(string? ct) => (ct ?? "regex_match") switch
+    {
+        "regex_match"      => "Pattern Match",
+        "contains"         => "Contains",
+        "does_not_contain" => "Does Not Contain",
+        "starts_with"      => "Starts With",
+        "ends_with"        => "Ends With",
+        "equals"           => "Equals",
+        "not_equals"       => "Not Equals",
+        "is_empty"         => "Is Empty",
+        "is_not_empty"     => "Is Not Empty",
+        "greater_than"     => "Greater Than",
+        "less_than"        => "Less Than",
+        _                  => ct ?? "Pattern Match",
+    };
+
+    // ── Friendly field type badges ─────────────────────────────────────────────
+    string FriendlyFieldType(string? ft) => (ft ?? "string") switch
+    {
+        "skip"              => "Skip",
+        "table_row"         => "Table Row",
+        "line_before_price" => "Line Before Price",
+        "line_anchor"     => "Line Anchor",
+        "location_anchor" => "Location Anchor",
+        "section_start"   => "Section Start",
+        "section_end"     => "Section End",
+        "decimal"         => "Number",
+        "date"            => "Date",
+        _                 => ft ?? "",
+    };
+
+    // ── Readable pattern — strips regex escapes for human display ──────────────
+    string ReadablePattern(string? pattern)
+    {
+        if (string.IsNullOrWhiteSpace(pattern)) return "—";
+
+        var readable = pattern
+            .Replace(@"\s+", " ")
+            .Replace(@"\s*", " ")
+            .Replace(@"\S+", "[value]")
+            .Replace(@"\S*", "[value]")
+            .Replace(@"\d+", "[number]")
+            .Replace(@"\d*", "[number]")
+            .Replace(@"\.", ".")
+            .Replace(@"\(", "(")
+            .Replace(@"\)", ")")
+            .Replace(@"\-", "-")
+            .Replace(@"(?:", "")
+            .Replace(@"(?i:", "")
+            .Replace("(?)", "")
+            .Replace("(", "")
+            .Replace(")", "")
+            .Replace("^", "")
+            .Replace("$", "")
+            .Replace(".*?", "…")
+            .Replace(".*",  "…")
+            .Replace(".+",  "…")
+            .Replace("  ", " ")
+            .Trim();
+
+        return readable.Length > 70 ? readable[..67] + "…" : readable;
+    }
+
+    // ── Friendly transform summary ─────────────────────────────────────────────
+    string FriendlyTransforms(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return "—";
+        try
+        {
+            var steps = System.Text.Json.JsonSerializer.Deserialize<
+                List<InvoiceParser.Core.Services.TransformStep>>(json,
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (steps == null || steps.Count == 0) return "—";
+            return string.Join(" → ", steps.Select(s => s.Type switch
+            {
+                "remove_prefix"   => $"Remove prefix '{s.Value1}'",
+                "remove_suffix"   => $"Remove suffix '{s.Value1}'",
+                "replace"         => $"Replace '{s.Value1}'",
+                "regex_remove"    => "Remove pattern",
+                "trim"            => "Trim spaces",
+                "to_upper"        => "UPPERCASE",
+                "to_lower"        => "lowercase",
+                "extract_between" => $"Extract between '{s.Value1}' and '{s.Value2}'",
+                "regex_extract"   => "Extract value",
+                "convert_date"    => $"Convert date to {s.Value2}",
+                "join_next_line"  => "Join next line",
+                "join_prev_line"  => "Join previous line",
+                _                 => s.Type,
+            }));
+        }
+        catch { return "—"; }
+    }
+
+    // ── Badge colours ──────────────────────────────────────────────────────────
     string ConditionBadge(string? ct) => (ct ?? "regex_match") switch
     {
         "regex_match"      => "bg-dark",
@@ -118,32 +266,15 @@
 
     string FieldTypeBadge(string? ft) => (ft ?? "string") switch
     {
-        "skip"            => "bg-danger",
+        "skip"              => "bg-danger",
+        "table_row"         => "bg-purple",
+        "line_before_price" => "bg-purple",
         "line_anchor"     => "bg-primary",
         "location_anchor" => "bg-info text-dark",
+        "section_start"   => "bg-success",
+        "section_end"     => "bg-success",
         "decimal"         => "bg-success",
         "date"            => "bg-warning text-dark",
         _                 => "bg-secondary",
     };
-
-    string TransformSummary(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json)) return "—";
-        try
-        {
-            var steps = System.Text.Json.JsonSerializer.Deserialize<
-                List<InvoiceParser.Core.Services.TransformStep>>(json,
-                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            if (steps == null || steps.Count == 0) return "—";
-            return string.Join(" → ", steps.Select(s =>
-            {
-                var lbl = s.Type;
-                if (!string.IsNullOrWhiteSpace(s.Value1)) lbl += $"({s.Value1}";
-                if (!string.IsNullOrWhiteSpace(s.Value2)) lbl += $", {s.Value2}";
-                if (!string.IsNullOrWhiteSpace(s.Value1)) lbl += ")";
-                return lbl;
-            }));
-        }
-        catch { return json ?? "—"; }
-    }
 }
