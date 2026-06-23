@@ -68,4 +68,20 @@ public class VendorParsingRule
     /// </summary>
     [Column("TransformationsJson")]
     public string? TransformationsJson { get; set; }
+
+    /// <summary>
+    /// For <c>table_row</c> rules only.
+    /// How many lines above (negative) or below (positive) the trigger line the description lives.
+    /// E.g. -2 means the description is 2 lines above the matched trigger line.
+    /// </summary>
+    [Column("DescriptionLineOffset")]
+    public int DescriptionLineOffset { get; set; } = -1;
+
+    /// <summary>
+    /// For <c>table_row</c> rules only.
+    /// Optional regex to extract the amount from the trigger line.
+    /// When null the last decimal number on the trigger line is used.
+    /// </summary>
+    [Column("AmountPattern")]
+    public string? AmountPattern { get; set; }
 }

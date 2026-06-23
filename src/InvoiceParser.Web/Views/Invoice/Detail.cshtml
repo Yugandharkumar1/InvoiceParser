@@ -17,7 +17,14 @@
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                 <h4 class="mb-0">Invoice #@(Model.InvoiceNumber ?? Model.Id.ToString())</h4>
-                <a asp-action="Index" class="btn btn-sm btn-outline-light">Back to List</a>
+                <div class="d-flex gap-2">
+                    <a asp-action="ExportExcel" asp-route-id="@Model.Id"
+                       class="btn btn-sm btn-light fw-semibold"
+                       title="Download invoice data as Excel workbook">
+                        ⬇ Export to Excel
+                    </a>
+                    <a asp-action="Index" class="btn btn-sm btn-outline-light">Back to List</a>
+                </div>
             </div>
             <div class="card-body">
                 <div class="row mb-4">

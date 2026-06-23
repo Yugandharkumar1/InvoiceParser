@@ -1,0 +1,165 @@
+@model List<string>
+@{
+    ViewData["Title"] = "Detection Keywords";
+    int carrierId     = ViewBag.CarrierId;
+    string carrierName = ViewBag.CarrierName ?? "Carrier";
+    string carrierCode = ViewBag.CarrierCode ?? "";
+}
+
+<div class="row justify-content-center">
+    <div class="col-lg-7 col-md-9">
+
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <a asp-action="Carriers" class="btn btn-sm btn-outline-secondary">← Carriers</a>
+            <nav aria-label="breadcrumb" class="ms-1">
+                <ol class="breadcrumb mb-0 small">
+                    <li class="breadcrumb-item"><a asp-action="Carriers">Carriers</a></li>
+                    <li class="breadcrumb-item"><a asp-action="Index" asp-route-carrierId="@carrierId">@carrierName</a></li>
+                    <li class="breadcrumb-item active">Detection Keywords</li>
+                </ol>
+            </nav>
+        </div>
+
+        @if (TempData["SuccessMessage"] != null)
+        {
+            <div class="alert alert-success alert-dismissible fade show mb-3" role="alert">
+                ✓ @TempData["SuccessMessage"]
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        }
+
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    🔍 Detection Keywords
+                    <span class="badge bg-light text-dark ms-2 fw-normal">@carrierName @(string.IsNullOrWhiteSpace(carrierCode) ? "" : "· " + carrierCode)</span>
+                </h5>
+            </div>
+            <div class="card-body">
+
+                <div class="alert alert-info mb-4" role="alert">
+                    <strong>What are detection keywords?</strong><br />
+                    When an invoice is uploaded, the system scans its text for your carrier's <strong>name</strong>
+                    and <strong>code</strong>. If those alone aren't enough (e.g. the invoice prints a short code
+                    or a brand alias), add extra keywords here. Each keyword match adds to the confidence score
+                    — the carrier with the highest score is selected automatically.
+                    <hr class="my-2" />
+                    <span class="small text-muted">Examples: <code>TDS</code>, <code>TDS Telecom</code>, <code>Lumen</code>,
+                    <code>CenturyLink</code>, <code>TDST</code></span>
+                </div>
+
+                @* Live keyword chip display *@
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small text-muted text-uppercase tracking-wide">
+                        Active Keywords
+                        <span class="badge bg-secondary ms-1" id="kwCount">@Model.Count</span>
+                    </label>
+                    <div id="chipContainer" class="d-flex flex-wrap gap-2 p-3 border rounded bg-light"
+                         style="min-height:52px;">
+                        @if (!Model.Any())
+                        {
+                            <span class="text-muted small fst-italic" id="emptyHint">No keywords yet — add them below.</span>
+                        }
+                        @foreach (var kw in Model)
+                        {
+                            <span class="badge bg-primary d-flex align-items-center gap-1 keyword-chip"
+                                  data-kw="@kw" style="font-size:.85rem;padding:.35em .65em;">
+                                @kw
+                                <button type="button" class="btn-close btn-close-white ms-1"
+                                        style="font-size:.55rem;" title="Remove"
+                                        onclick="removeChip(this.parentElement)"></button>
+                            </span>
+                        }
+                    </div>
+                </div>
+
+                @* Add keyword input *@
+                <div class="mb-4">
+                    <label class="form-label fw-semibold small text-muted text-uppercase">Add Keyword</label>
+                    <div class="input-group">
+                        <input type="text" id="newKwInput" class="form-control"
+                               placeholder="e.g. TDS Telecom" maxlength="100"
+                               autocomplete="off" />
+                        <button type="button" class="btn btn-outline-primary" id="addKwBtn">+ Add</button>
+                    </div>
+                    <div class="form-text">Press <kbd>Enter</kbd> or click Add. Each keyword must be at least 2 characters.</div>
+                </div>
+
+                @* Hidden form that submits final state *@
+                <form asp-action="DetectionKeywords" asp-route-carrierId="@carrierId" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="keywordsRaw" id="keywordsRaw" value="@string.Join("\n", Model)" />
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary px-4" id="saveBtn">Save Keywords</button>
+                        <a asp-action="Index" asp-route-carrierId="@carrierId"
+                           class="btn btn-outline-secondary">View Rules</a>
+                    </div>
+                </form>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    var container   = document.getElementById('chipContainer');
+    var emptyHint   = document.getElementById('emptyHint');
+    var kwCountEl   = document.getElementById('kwCount');
+    var input       = document.getElementById('newKwInput');
+    var addBtn      = document.getElementById('addKwBtn');
+    var hiddenInput = document.getElementById('keywordsRaw');
+
+    function getKeywords() {
+        return Array.from(container.querySelectorAll('.keyword-chip'))
+                    .map(function (el) { return el.getAttribute('data-kw'); });
+    }
+
+    function syncHidden() {
+        var kws = getKeywords();
+        hiddenInput.value = kws.join('\n');
+        kwCountEl.textContent = kws.length;
+        if (emptyHint) emptyHint.style.display = kws.length ? 'none' : '';
+    }
+
+    function addChip(kw) {
+        kw = kw.trim();
+        if (kw.length < 2) return;
+        // Prevent duplicates (case-insensitive)
+        var existing = getKeywords().map(function (k) { return k.toLowerCase(); });
+        if (existing.indexOf(kw.toLowerCase()) >= 0) {
+            input.classList.add('is-invalid');
+            setTimeout(function () { input.classList.remove('is-invalid'); }, 1200);
+            return;
+        }
+        if (emptyHint) emptyHint.style.display = 'none';
+        var chip = document.createElement('span');
+        chip.className = 'badge bg-primary d-flex align-items-center gap-1 keyword-chip';
+        chip.setAttribute('data-kw', kw);
+        chip.style.cssText = 'font-size:.85rem;padding:.35em .65em;';
+        chip.innerHTML = kw
+            + '<button type="button" class="btn-close btn-close-white ms-1" style="font-size:.55rem;" '
+            + 'title="Remove" onclick="removeChip(this.parentElement)"></button>';
+        container.appendChild(chip);
+        syncHidden();
+        input.value = '';
+        input.focus();
+    }
+
+    addBtn.addEventListener('click', function () { addChip(input.value); });
+    input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); addChip(input.value); }
+    });
+
+    // Expose removeChip globally so inline onclick works
+    window.removeChip = function (chip) {
+        chip.remove();
+        syncHidden();
+    };
+
+    syncHidden();
+})();
+</script>
+}

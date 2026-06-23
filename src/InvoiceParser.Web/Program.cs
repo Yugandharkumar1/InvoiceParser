@@ -99,6 +99,7 @@ builder.Services.AddSingleton<IOcrService>(sp =>
     new TesseractOcrService(sp.GetRequiredService<ILogger<TesseractOcrService>>(), tessDataPath));
 
 builder.Services.AddScoped<IInvoiceRepository, InvoiceRepository>();
+builder.Services.AddSingleton<ICarrierRuleStore, JsonCarrierRuleStore>();
 builder.Services.AddScoped<PdfTextExtractorService>(sp =>
     new PdfTextExtractorService(
         sp.GetRequiredService<ILogger<PdfTextExtractorService>>(),

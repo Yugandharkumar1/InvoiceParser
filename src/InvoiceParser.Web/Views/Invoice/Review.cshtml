@@ -22,6 +22,13 @@
             <div class="card-body">
 
                 <!-- Accuracy banner -->
+                <!-- Reparse status banner (shown/hidden by JS) -->
+                <div id="reparseBanner" class="alert d-flex align-items-center gap-2 mb-3" style="display:none !important;">
+                    <span id="reparseBannerIcon"></span>
+                    <span id="reparseBannerMsg"></span>
+                    <button type="button" class="btn-close ms-auto" onclick="document.getElementById('reparseBanner').style.display='none'"></button>
+                </div>
+
                 <div id="accuracyBanner" class="alert alert-info d-flex align-items-center mb-4" style="display:none !important;">
                     <div class="me-3">
                         <strong>Parser Accuracy:</strong>
@@ -33,7 +40,7 @@
                     <span id="accuracyDetail" class="ms-3 text-muted small"></span>
                 </div>
 
-                <form asp-action="Save" method="post">
+                <form asp-action="Save" method="post" id="invoiceSaveForm">
                     @Html.AntiForgeryToken()
 
                     <input type="hidden" asp-for="CustomerId" />
@@ -46,6 +53,8 @@
                     <input type="hidden" asp-for="PythonOcrJson" />
                     <input type="hidden" asp-for="PythonSource" />
                     <input type="hidden" asp-for="PythonVendorHint" />
+                    <input type="hidden" asp-for="OverwriteExisting" id="hOverwriteExisting" value="false" />
+                    <input type="hidden" asp-for="SkippedSummaryFields" id="hSkippedSummaryFields" value="" />
 
                     <!-- Hidden original values for summary feedback -->
                     <input type="hidden" asp-for="Orig_InvoiceNumber" />
@@ -276,6 +285,15 @@
                         </div>
                     </div>
 
+                    <!-- Summary balance verification banner -->
+                    <div id="summaryBalanceBanner" class="alert d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2" style="display:none !important;">
+                        <div>
+                            <strong id="summaryBalanceIcon"></strong>
+                            <span id="summaryBalanceMsg"></span>
+                        </div>
+                        <span id="summaryBalanceDetail" class="small text-muted"></span>
+                    </div>
+
                     <hr />
 
                     <!-- Tab Navigation -->
@@ -319,9 +337,18 @@
                             else
                             { <span class="badge bg-secondary badge-status ms-2">0 Auto</span> }
                         </h5>
-                        <button type="button" class="btn btn-sm btn-outline-success" id="addChargeRow">
-                            + Add Row
-                        </button>
+                        <div class="d-flex gap-2">
+                            <a href="/CarrierRules/Wizard?carrierId=@Model.CarrierId&section=t_charge"
+                               class="btn btn-sm btn-outline-primary" title="Open rule wizard for charge line items">
+                                ✎ Add Rule
+                            </a>
+                            <button type="button" class="btn btn-sm btn-outline-info" id="reparseBtn" title="Re-run the parser with the latest rules (no re-upload needed)">
+                                🔄 Re-parse
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-success" id="addChargeRow">
+                                + Add Row
+                            </button>
+                        </div>
                     </div>
 
                     <div class="d-flex gap-2 mb-2 align-items-center flex-wrap">
@@ -356,7 +383,7 @@
                                     <th style="width: 8%"></th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="chargesTableBody">
                                 @for (var i = 0; i < Model.Charges.Count; i++)
                                 {
                                     <tr data-auto="true"
@@ -431,8 +458,10 @@
 
                     @if (Model.Charges.Count == 0)
                     {
-                        <div class="alert alert-info">
-                            No charge line items were parsed. You can add them manually using the "+ Add Row" button above.
+                        <div class="alert alert-info d-flex justify-content-between align-items-center">
+                            <span>No charge line items were parsed. You can add them manually or create a rule to teach the parser where to find them.</span>
+                            <a href="/CarrierRules/Wizard?carrierId=@Model.CarrierId&section=t_charge"
+                               class="btn btn-sm btn-outline-primary ms-3 text-nowrap">✎ Add Rule</a>
                         </div>
                     }
                     </div><!-- end chargesPane -->
@@ -443,7 +472,13 @@
                     <div class="tab-pane fade" id="usagePane" role="tabpanel" aria-labelledby="usage-tab">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h5 class="mb-0">Usage Items <span class="badge bg-info ms-1">@Model.Usages.Count</span></h5>
-                            <button type="button" class="btn btn-sm btn-outline-success" id="addUsageRow">+ Add Row</button>
+                            <div class="d-flex gap-2">
+                                <a href="/CarrierRules/Wizard?carrierId=@Model.CarrierId&section=t_usage"
+                                   class="btn btn-sm btn-outline-primary" title="Open rule wizard for usage records">
+                                    ✎ Add Rule
+                                </a>
+                                <button type="button" class="btn btn-sm btn-outline-success" id="addUsageRow">+ Add Row</button>
+                            </div>
                         </div>
 
                         <div class="input-group input-group-sm mb-2">
@@ -530,7 +565,13 @@
                     <div class="tab-pane fade" id="inventoryPane" role="tabpanel" aria-labelledby="inventory-tab">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h5 class="mb-0">Inventory <span class="badge bg-secondary ms-1">@Model.Inventories.Count</span></h5>
-                            <button type="button" class="btn btn-sm btn-outline-success" id="addInventoryRow">+ Add Row</button>
+                            <div class="d-flex gap-2">
+                                <a href="/CarrierRules/Wizard?carrierId=@Model.CarrierId&section=t_inventory"
+                                   class="btn btn-sm btn-outline-primary" title="Open rule wizard for inventory records">
+                                    ✎ Add Rule
+                                </a>
+                                <button type="button" class="btn btn-sm btn-outline-success" id="addInventoryRow">+ Add Row</button>
+                            </div>
                         </div>
 
                         <div class="input-group input-group-sm mb-2">
@@ -598,7 +639,8 @@
 
                     <div class="d-flex justify-content-between align-items-center mt-4" id="actionButtons">
                         <div class="d-flex gap-2 flex-wrap" id="saveButtons">
-                            <button type="submit" class="btn btn-success px-4">
+                            <button type="submit" class="btn btn-success px-4" id="confirmSaveBtn"
+                                    onclick="collectSkippedFields()">
                                 Confirm &amp; Save
                             </button>
                             <a asp-action="Upload" class="btn btn-outline-secondary">
@@ -688,6 +730,29 @@
                         });
                     </script>
                 }
+                @if (TempData["DuplicateInvoiceId"] != null)
+                {
+                    <div class="alert alert-warning alert-dismissible fade show mt-3" role="alert">
+                        <strong>⚠ Invoice #@TempData["DuplicateInvoiceNumber"] already exists</strong> (ID: @TempData["DuplicateInvoiceId"]).
+                        <br/>
+                        <span class="small">Do you want to <strong>replace the existing record</strong> with the data you just reviewed?</span>
+                        <div class="mt-2 d-flex gap-2">
+                            <button type="button" class="btn btn-warning btn-sm" id="btnOverwriteInvoice">
+                                Yes, replace the existing invoice
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="alert">
+                                Cancel
+                            </button>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                    <script>
+                        document.getElementById('btnOverwriteInvoice').addEventListener('click', function () {
+                            document.getElementById('hOverwriteExisting').value = 'true';
+                            document.getElementById('invoiceSaveForm').submit();
+                        });
+                    </script>
+                }
                 @if (TempData["ErrorMessage"] != null)
                 {
                     <div class="alert alert-danger alert-dismissible fade show mt-3" role="alert">
@@ -720,27 +785,106 @@
 
                 <div class="mb-3">
                     <label class="form-label fw-semibold">Invoice Lines — click the line containing the value</label>
+                    <div class="input-group input-group-sm mb-2">
+                        <span class="input-group-text bg-white"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398l3.85 3.85a1 1 0 0 0 1.415-1.415l-3.868-3.833zm-5.242 1.156a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z"/></svg></span>
+                        <input type="text" id="pdfLinesSearch" class="form-control font-monospace"
+                               placeholder="Filter lines…" autocomplete="off" />
+                        <button type="button" class="btn btn-outline-secondary" id="pdfLinesSearchClear" title="Clear filter" style="display:none;">✕</button>
+                    </div>
                     <div id="pdfLinesContainer" class="border rounded p-2 font-monospace small"
                          style="max-height:260px;overflow-y:auto;background:#f8f9fa;"></div>
+                    <div id="pdfLinesNoMatch" class="text-muted small mt-1" style="display:none;">No lines match your filter.</div>
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label fw-semibold">Condition Type</label>
+                    <label class="form-label fw-semibold">What should the rule do?</label>
                     <select id="ruleConditionType" class="form-select">
-                        <option value="regex_match">Regex Match (use capture group 1)</option>
-                        <option value="starts_with">Starts With</option>
-                        <option value="contains">Contains</option>
-                        <option value="equals">Equals</option>
+                        <option value="regex_match">🎯 Extract a specific value from this line (recommended)</option>
+                        <option value="starts_with">🔍 Match lines that start with specific text</option>
+                        <option value="contains">🔍 Match lines that contain specific text</option>
+                        <option value="equals">🔍 Match the exact line text</option>
                     </select>
+                    <!-- Warning shown for non-extract modes -->
+                    <div id="ruleSimpleModeWarning" class="alert alert-warning py-2 px-3 small mt-2 mb-0" style="display:none;">
+                        <strong>⚠ Heads-up:</strong> This mode records the <em>entire matching line</em> as the field value —
+                        not a specific part of it. If you need just an account number, invoice number, date, or dollar amount,
+                        choose <strong>"Extract a specific value"</strong> instead.
+                    </div>
                 </div>
 
-                <div class="mb-3">
-                    <label class="form-label fw-semibold" id="rulePatternLabel">Pattern / Value</label>
-                    <input type="text" id="rulePattern" class="form-control font-monospace"
-                           placeholder="e.g. TOTAL DUE BY\s+([\d/]+)" />
-                    <div class="form-text" id="rulePatternHint">
-                        For Regex Match: add a capture group <code>(...)</code> around the value you want to extract.
+                <!-- ── Friendly builder (shown for regex_match) ─────────────── -->
+                <div id="ruleFriendlyBuilder" class="mb-3">
+                    <div class="border rounded p-3" style="background:#f0f4ff;">
+
+                        <!-- Token picker: user clicks the word that IS the value -->
+                        <div class="mb-3" id="ruleTokenPickerWrap" style="display:none;">
+                            <label class="form-label small fw-semibold mb-1">
+                                Click the word that is the <span class="text-primary fw-bold">value</span> you want to capture:
+                            </label>
+                            <div id="ruleLineTokens" class="border rounded px-2 py-2 bg-white font-monospace"
+                                 style="font-size:0.82rem; line-height:2.2; word-break:break-all;"></div>
+                            <div class="form-text" id="ruleTokenHint">
+                                <strong>Click once</strong> to select a single word.
+                                <strong>Click a second word</strong> to extend the selection (e.g. select a full date like <em>March 1, 2026</em>).
+                            </div>
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="form-label small fw-semibold mb-1">
+                                Text before the value <span class="fw-normal text-muted">(used to find the right line)</span>:
+                            </label>
+                            <div class="input-group input-group-sm">
+                                <input type="text" id="rulePrefix" class="form-control"
+                                       placeholder="e.g. Account Number:" autocomplete="off" />
+                                <button type="button" class="btn btn-outline-secondary" id="ruleClearPrefix" title="Remove prefix — capture from start of line">✕ No prefix</button>
+                            </div>
+                            <div class="form-text">The parser finds a line that contains this text, then grabs what comes after it.</div>
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="form-label small fw-semibold mb-1">
+                                Example value from this invoice
+                                <span class="fw-normal text-muted">(edit if the auto-detected value is wrong)</span>:
+                            </label>
+                            <input type="text" id="ruleCaptureExample" class="form-control form-control-sm text-success fw-semibold"
+                                   placeholder="Click a line above, then click the value word" />
+                        </div>
+
+                        <!-- Date-in-prefix warning -->
+                        <div id="ruleDatePrefixWarning" class="alert alert-warning py-2 px-3 small mb-2" style="display:none;">
+                            <strong>⚠ Unstable prefix detected:</strong>
+                            The text before the value looks like it contains a <strong>date or billing period</strong> that changes every invoice.
+                            The rule may stop working next month.<br/>
+                            <span class="mt-1 d-block">
+                                <strong>Tip:</strong> Click <strong>✕ No prefix</strong> to remove it,
+                                or shorten the prefix to only the stable label part (e.g. remove the date).
+                            </span>
+                        </div>
+
+                        <div id="ruleFriendlyPreview" class="alert alert-info py-2 px-3 small mb-0" style="display:none;">
+                            <strong>✓ This rule will:</strong>
+                            <span id="previewPrefixText"></span>
+                        </div>
                     </div>
+                    <div class="d-flex justify-content-end mt-1">
+                        <button type="button" class="btn btn-link btn-sm p-0 text-muted small" id="toggleAdvancedPattern">
+                            ⚙ Advanced — show raw pattern
+                        </button>
+                    </div>
+                    <div id="advancedPatternPanel" class="mt-1" style="display:none;">
+                        <label class="form-label small text-muted mb-1">
+                            Raw regex pattern <em class="text-warning">(auto-generated — only edit if you know regex)</em>
+                        </label>
+                        <input type="text" id="rulePattern" class="form-control form-control-sm font-monospace text-muted" />
+                    </div>
+                </div>
+
+                <!-- ── Simple builder (shown for contains / starts_with / equals) ── -->
+                <div id="ruleSimpleBuilder" class="mb-3" style="display:none;">
+                    <label class="form-label fw-semibold" id="rulePatternLabel">Match Value</label>
+                    <input type="text" id="rulePatternSimple" class="form-control"
+                           placeholder="Enter the text to match (case-insensitive)" />
+                    <div class="form-text" id="rulePatternHint">The parser will find lines that match this value.</div>
                 </div>
 
                 <div id="ruleTestResultBox" class="mb-3" style="display:none;"></div>
@@ -753,6 +897,52 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" id="saveRuleBtn">Save Rule</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Skip Rule Suggestion Modal -->
+<div class="modal fade" id="skipRuleModal" tabindex="-1" aria-labelledby="skipRuleModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-warning-subtle">
+                <h5 class="modal-title" id="skipRuleModalLabel">
+                    Skip this charge in future invoices?
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">
+                    You removed a charge that was automatically captured.
+                    Would you like to create a rule so this type of charge is automatically ignored next time?
+                </p>
+                <div class="mb-3 p-2 bg-light border rounded font-monospace small" id="skipRuleDescPreview"
+                     style="word-break:break-all;"></div>
+
+                <label class="form-label fw-semibold small">Match lines where the text:</label>
+                <div class="d-flex gap-2 align-items-center">
+                    <select id="skipRuleCondType" class="form-select form-select-sm" style="width:auto;min-width:130px;">
+                        <option value="starts_with" selected>starts with</option>
+                        <option value="contains">contains</option>
+                        <option value="equals">is exactly</option>
+                    </select>
+                    <input type="text" id="skipRulePattern" class="form-control form-control-sm"
+                           placeholder="Charge description text…" style="flex:1;" />
+                </div>
+                <div class="form-text mt-1">
+                    You can shorten the text above so the rule matches similar charges in future invoices.
+                </div>
+
+                <div id="skipRuleResult" class="mt-2" style="display:none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" id="skipRuleNoBtn" data-bs-dismiss="modal">
+                    No, just delete it
+                </button>
+                <button type="button" class="btn btn-warning" id="skipRuleYesBtn">
+                    Yes, skip it in future invoices
+                </button>
             </div>
         </div>
     </div>
@@ -893,59 +1083,96 @@
             validateChargeTotals();
         }
 
+        function getFieldVal(name) {
+            var el = document.querySelector('[name="' + name + '"]');
+            return parseFloat((el ? el.value : '0').replace(/[\$,]/g, '')) || 0;
+        }
+
         function validateChargeTotals() {
-            var banner = document.getElementById('chargeMismatchBanner');
-            var icon = document.getElementById('mismatchIcon');
-            var msg = document.getElementById('mismatchMessage');
-            var detail = document.getElementById('mismatchDetail');
+            var banner  = document.getElementById('chargeMismatchBanner');
+            var icon    = document.getElementById('mismatchIcon');
+            var msg     = document.getElementById('mismatchMessage');
+            var detail  = document.getElementById('mismatchDetail');
 
-            var chargeTotal = parseFloat((document.getElementById('chargeTotal').value || '0').replace(/[\$,]/g, '')) || 0;
-
-            var currChgInput = document.querySelector('[name="CurrentCharges"]');
-            var currTaxInput = document.querySelector('[name="CurrentTax"]');
-            var currChg = parseFloat((currChgInput ? currChgInput.value : '0').replace(/[\$,]/g, '')) || 0;
-            var currTax = parseFloat((currTaxInput ? currTaxInput.value : '0').replace(/[\$,]/g, '')) || 0;
-
+            var chargeTotal   = parseFloat((document.getElementById('chargeTotal').value || '0').replace(/[\$,]/g, '')) || 0;
+            var currChg       = getFieldVal('CurrentCharges');
+            var currTax       = getFieldVal('CurrentTax');
             var expectedTotal = currChg + currTax;
 
-            if (chargeTotal === 0 && expectedTotal === 0) {
-                banner.style.display = 'none';
-                return;
-            }
+            if (chargeTotal === 0 && expectedTotal === 0) { banner.style.display = 'none'; return; }
 
             var diff = Math.abs(chargeTotal - expectedTotal);
-            var tolerance = 0.02;
-
             banner.style.removeProperty('display');
             banner.classList.remove('alert-success', 'alert-warning', 'alert-danger');
 
-            if (diff <= tolerance) {
+            if (diff <= 0.02) {
                 banner.classList.add('alert-success');
                 icon.textContent = '\u2713';
-                msg.textContent = ' Charges verified \u2014 line item total ($' + chargeTotal.toFixed(2) + ') matches summary.';
+                msg.textContent = ' Charges verified \u2014 line item total ($' + chargeTotal.toFixed(2) + ') matches Current Charges + Taxes.';
                 detail.textContent = '';
             } else {
-                var pctOff = expectedTotal > 0 ? Math.round((diff / expectedTotal) * 100) : 100;
+                var pctOff    = expectedTotal > 0 ? Math.round((diff / expectedTotal) * 100) : 100;
                 var direction = chargeTotal < expectedTotal ? 'less' : 'more';
-                var hint = chargeTotal < expectedTotal
-                    ? 'We may have missed capturing some charges from the invoice.'
-                    : 'We may have captured extra charges that don\'t belong to this section.';
+                var hint      = chargeTotal < expectedTotal
+                    ? 'Some charges may not have been captured.'
+                    : 'Extra charges may have been captured from outside the charge section.';
+                banner.classList.add(pctOff > 20 ? 'alert-danger' : 'alert-warning');
+                icon.textContent = pctOff > 20 ? '\u2716' : '\u26A0';
+                msg.innerHTML = ' Charge line items (<strong>$' + chargeTotal.toFixed(2) + '</strong>) are <strong>$'
+                    + diff.toFixed(2) + ' ' + direction + '</strong> than Current Charges + Taxes'
+                    + ' (<strong>$' + expectedTotal.toFixed(2) + '</strong>). ' + hint;
+                detail.textContent = 'Current Charges: $' + currChg.toFixed(2)
+                    + (currTax > 0 ? ' + Taxes: $' + currTax.toFixed(2) : '')
+                    + ' = $' + expectedTotal.toFixed(2);
+            }
 
-                if (pctOff > 20) {
-                    banner.classList.add('alert-danger');
-                    icon.textContent = '\u2716';
-                } else {
-                    banner.classList.add('alert-warning');
-                    icon.textContent = '\u26A0';
-                }
+            validateSummaryBalance();
+        }
 
-                msg.innerHTML = ' Charge total (<strong>$' + chargeTotal.toFixed(2) + '</strong>) is <strong>$' +
-                    diff.toFixed(2) + ' ' + direction + '</strong> than Current Charges + Taxes (<strong>$' +
-                    expectedTotal.toFixed(2) + '</strong>). ' + hint +
-                    ' <em>If you notice any discrepancies, please use the <strong>Give Feedback</strong> button to let us know so we can improve.</em>';
-                detail.textContent = 'Current Charges: $' + currChg.toFixed(2) +
-                    (currTax > 0 ? ' + Taxes: $' + currTax.toFixed(2) : '') +
-                    ' = $' + expectedTotal.toFixed(2);
+        // ── Summary Balance Verification ──────────────────────────────────────
+        // Formula: Previous Balance − Payments + Prev Adj + Curr Adj + Curr Charges + Taxes = Balance Due
+        function validateSummaryBalance() {
+            var banner = document.getElementById('summaryBalanceBanner');
+            var icon   = document.getElementById('summaryBalanceIcon');
+            var msg    = document.getElementById('summaryBalanceMsg');
+            var detail = document.getElementById('summaryBalanceDetail');
+
+            var begBal   = getFieldVal('BeginningBalance');
+            var payment  = getFieldVal('Payment');
+            var prevAdj  = getFieldVal('PreviousAdjustments');
+            var currAdj  = getFieldVal('CurrentAdjustments');
+            var currChg  = getFieldVal('CurrentCharges');
+            var currTax  = getFieldVal('CurrentTax');
+            var endBal   = getFieldVal('EndingBalance');
+
+            if (currChg === 0 && endBal === 0) { banner.style.display = 'none'; return; }
+
+            var computed = begBal - payment + prevAdj + currAdj + currChg + currTax;
+
+            // If the formula resolves to zero the previous balance data is likely incomplete — hide the banner
+            if (computed === 0) { banner.style.display = 'none'; return; }
+
+            var diff = Math.abs(computed - endBal);
+
+            banner.style.removeProperty('display');
+            banner.classList.remove('alert-success', 'alert-warning', 'alert-info');
+
+            if (diff <= 0.02) {
+                banner.classList.add('alert-success');
+                icon.textContent = '\u2713';
+                msg.innerHTML = ' Summary balanced \u2014 <strong>Balance Due ($' + endBal.toFixed(2)
+                    + ')</strong> matches the computed total.';
+                detail.textContent = '';
+            } else {
+                banner.classList.add(diff > 10 ? 'alert-warning' : 'alert-info');
+                icon.textContent = '\u26A0';
+                msg.innerHTML = ' Balance Due (<strong>$' + endBal.toFixed(2) + '</strong>) differs from the'
+                    + ' computed total (<strong>$' + computed.toFixed(2) + '</strong>) by <strong>$'
+                    + diff.toFixed(2) + '</strong>.';
+                detail.textContent = 'Prev Bal (' + begBal.toFixed(2) + ') \u2212 Payments ('
+                    + payment.toFixed(2) + ') + Prev Adj (' + prevAdj.toFixed(2) + ') + Curr Adj ('
+                    + currAdj.toFixed(2) + ') + Curr Charges (' + currChg.toFixed(2) + ') + Taxes ('
+                    + currTax.toFixed(2) + ') = $' + computed.toFixed(2);
             }
         }
 
@@ -1088,11 +1315,22 @@
                 updateAccuracy();
             });
 
-            // Re-validate when summary fields change
-            var summaryFields = document.querySelectorAll('[name="CurrentCharges"], [name="CurrentTax"]');
-            summaryFields.forEach(function (el) {
-                el.addEventListener('input', validateChargeTotals);
+            // Re-validate charge totals when Current Charges or Taxes change
+            document.querySelectorAll('[name="CurrentCharges"], [name="CurrentTax"]')
+                .forEach(function (el) { el.addEventListener('input', validateChargeTotals); });
+
+            // Re-validate summary balance when any summary monetary field changes
+            var summaryBalanceFields = [
+                'BeginningBalance', 'Payment', 'PreviousAdjustments', 'CurrentAdjustments',
+                'CurrentCharges', 'CurrentTax', 'EndingBalance'
+            ];
+            summaryBalanceFields.forEach(function (name) {
+                var el = document.querySelector('[name="' + name + '"]');
+                if (el) el.addEventListener('input', validateSummaryBalance);
             });
+
+            // Run on page load
+            validateSummaryBalance();
 
             // Search bar events
             document.getElementById('chargeSearchInput').addEventListener('input', applySearchAndFilters);
@@ -1125,13 +1363,107 @@
             if (activeGroupField !== 'none') applyGrouping(); else renderPage();
         });
 
+        // ── Skip-rule suggestion on charge removal ────────────────────────────
+        var _skipModal       = new bootstrap.Modal(document.getElementById('skipRuleModal'));
+        var _skipRowToRemove = null;
+
         document.querySelector('#chargesTable').addEventListener('click', function (e) {
-            if (e.target.classList.contains('remove-row')) {
-                e.target.closest('tr').remove();
+            if (!e.target.classList.contains('remove-row')) return;
+            var row = e.target.closest('tr');
+            var isAuto = row.getAttribute('data-auto') === 'true';
+            var descInput = row.querySelector('.charge-desc');
+            var desc = descInput ? descInput.value.trim() : '';
+
+            if (isAuto && desc) {
+                // Pre-fill the modal with the charge description (trimmed to 60 chars as default pattern)
+                var defaultPattern = desc.length > 60 ? desc.substring(0, 60) : desc;
+                document.getElementById('skipRuleDescPreview').textContent = desc;
+                document.getElementById('skipRulePattern').value = defaultPattern;
+                document.getElementById('skipRuleCondType').value = 'starts_with';
+                document.getElementById('skipRuleResult').style.display = 'none';
+
+                // Store row reference, then show modal
+                _skipRowToRemove = row;
+                _skipModal.show();
+            } else {
+                // Manually added row — just remove silently
+                row.remove();
                 reindexRows();
                 updateTotal();
                 if (activeGroupField !== 'none') applyGrouping(); else renderPage();
             }
+        });
+
+        // "No" button — just remove the row without creating a rule
+        document.getElementById('skipRuleNoBtn').addEventListener('click', function () {
+            if (_skipRowToRemove) {
+                _skipRowToRemove.remove();
+                _skipRowToRemove = null;
+                reindexRows();
+                updateTotal();
+                if (activeGroupField !== 'none') applyGrouping(); else renderPage();
+            }
+        });
+
+        // "Yes" button — create a skip rule then remove the row
+        document.getElementById('skipRuleYesBtn').addEventListener('click', function () {
+            var btn = this;
+            var pattern  = document.getElementById('skipRulePattern').value.trim();
+            var condType = document.getElementById('skipRuleCondType').value;
+
+            if (!pattern) {
+                document.getElementById('skipRuleResult').innerHTML =
+                    '<div class="alert alert-warning py-2 mb-0">Please enter the text to match.</div>';
+                document.getElementById('skipRuleResult').style.display = '';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Saving…';
+
+            var token = document.querySelector('[name="__RequestVerificationToken"]').value;
+            var form  = new FormData();
+            form.append('__RequestVerificationToken', token);
+            form.append('CarrierId',      _ruleCarrierId);
+            form.append('FieldName',      'skip');
+            form.append('TargetTable',    't_charge');
+            form.append('FieldType',      'skip');
+            form.append('ConditionType',  condType);
+            form.append('ConditionSource','line_text');
+            form.append('RegexPattern',   pattern);
+            form.append('SortOrder',      '5');
+            form.append('IsActive',       'true');
+
+            fetch('/CarrierRules/QuickCreate', { method: 'POST', body: form })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    _skipModal.hide();
+                    if (_skipRowToRemove) {
+                        _skipRowToRemove.remove();
+                        _skipRowToRemove = null;
+                        reindexRows();
+                        updateTotal();
+                        if (activeGroupField !== 'none') applyGrouping(); else renderPage();
+                    }
+                    showReparseBanner('success',
+                        'Charge removed and skip rule created — this line will be ignored in future invoices. '
+                        + '<a href="/CarrierRules/Index/' + _ruleCarrierId + '" class="alert-link ms-2">View rules →</a>');
+                } else {
+                    document.getElementById('skipRuleResult').innerHTML =
+                        '<div class="alert alert-danger py-2 mb-0">Could not save rule: ' + (data.message || 'Unknown error') + '</div>';
+                    document.getElementById('skipRuleResult').style.display = '';
+                }
+            })
+            .catch(function (err) {
+                document.getElementById('skipRuleResult').innerHTML =
+                    '<div class="alert alert-danger py-2 mb-0">Request failed. Please try again.</div>';
+                document.getElementById('skipRuleResult').style.display = '';
+            })
+            .finally(function () {
+                btn.disabled = false;
+                btn.textContent = 'Yes, skip it in future invoices';
+            });
         });
 
         function reindexRows() {
@@ -1641,8 +1973,34 @@
         function openRuleModal(fieldName) {
             _ruleFieldName = fieldName;
             document.getElementById('ruleFieldName').value = _ruleFieldName;
-            document.getElementById('rulePattern').value = '';
+            document.getElementById('rulePattern').value   = '';
             document.getElementById('ruleTestResultBox').style.display = 'none';
+
+            // Reset friendly builder
+            document.getElementById('rulePrefix').value          = '';
+            document.getElementById('ruleCaptureExample').value  = '';
+            document.getElementById('ruleFriendlyPreview').style.display    = 'none';
+            document.getElementById('advancedPatternPanel').style.display   = 'none';
+            document.getElementById('ruleSimpleModeWarning').style.display  = 'none';
+            document.getElementById('ruleDatePrefixWarning').style.display  = 'none';
+            document.getElementById('ruleTokenPickerWrap').style.display    = 'none';
+            document.getElementById('ruleLineTokens').innerHTML             = '';
+            document.getElementById('toggleAdvancedPattern').textContent    = '⚙ Advanced — show raw pattern';
+
+            // Reset simple builder
+            document.getElementById('rulePatternSimple').value = '';
+
+            // Default condition type back to regex_match and show the right builder
+            document.getElementById('ruleConditionType').value = 'regex_match';
+            showBuilderForConditionType('regex_match');
+
+            // Reset search bar before populating
+            var searchInput = document.getElementById('pdfLinesSearch');
+            if (searchInput) {
+                searchInput.value = '';
+                document.getElementById('pdfLinesSearchClear').style.display = 'none';
+                document.getElementById('pdfLinesNoMatch').style.display = 'none';
+            }
             populatePdfLines();
             _ruleModal.show();
         }
@@ -1729,41 +2087,275 @@
             });
         }
 
-        function suggestPattern(line) {
-            var ct = document.getElementById('ruleConditionType').value;
-            var pattern = '';
-            if (ct === 'regex_match') {
-                var escaped = line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                // Try to replace the last token (likely the value) with a capture group
-                var parts = escaped.split(/\s+/);
-                if (parts.length > 1) {
-                    var last = parts.pop();
-                    pattern = parts.join('\\s+') + '\\s+\\$?\\s*(' + last + ')';
-                } else {
-                    pattern = '(' + escaped + ')';
-                }
-            } else {
-                pattern = line;
+        // ── PDF line search / filter ────────────────────────────────────────
+        (function () {
+            var searchEl  = document.getElementById('pdfLinesSearch');
+            var clearBtn  = document.getElementById('pdfLinesSearchClear');
+            var noMatchEl = document.getElementById('pdfLinesNoMatch');
+
+            function applyFilter() {
+                var term      = searchEl.value.toLowerCase().trim();
+                var items     = document.querySelectorAll('#pdfLinesContainer .pdf-line-item');
+                var visible   = 0;
+                items.forEach(function (el) {
+                    var show = !term || el.textContent.toLowerCase().includes(term);
+                    el.style.display = show ? '' : 'none';
+                    if (show) visible++;
+                });
+                clearBtn.style.display  = term ? '' : 'none';
+                noMatchEl.style.display = (term && visible === 0) ? '' : 'none';
             }
-            document.getElementById('rulePattern').value = pattern;
+
+            searchEl.addEventListener('input', applyFilter);
+
+            clearBtn.addEventListener('click', function () {
+                searchEl.value = '';
+                applyFilter();
+                searchEl.focus();
+            });
+        })();
+
+        // ── Builder helpers ───────────────────────────────────────────────────
+
+        function showBuilderForConditionType(ct) {
+            var isFriendly = ct === 'regex_match';
+            document.getElementById('ruleFriendlyBuilder').style.display   = isFriendly ? '' : 'none';
+            document.getElementById('ruleSimpleBuilder').style.display     = isFriendly ? 'none' : '';
+            document.getElementById('ruleSimpleModeWarning').style.display = isFriendly ? 'none' : '';
+            if (!isFriendly) {
+                var hints = {
+                    starts_with: 'The parser will find lines that <strong>start with</strong> this text (case-insensitive).',
+                    contains:    'The parser will find lines that <strong>contain</strong> this text (case-insensitive).',
+                    equals:      'The parser will find lines that are <strong>exactly</strong> this text (case-insensitive).',
+                };
+                document.getElementById('rulePatternLabel').textContent = 'Match Value';
+                document.getElementById('rulePatternHint').innerHTML    = hints[ct] || '';
+            }
         }
 
-        document.getElementById('ruleConditionType').addEventListener('change', function () {
-            var isRegex = this.value === 'regex_match';
-            document.getElementById('rulePatternLabel').textContent = isRegex ? 'Regex Pattern' : 'Condition Value';
-            document.getElementById('rulePatternHint').innerHTML = isRegex
-                ? 'Add a capture group <code>(...)</code> around the value to extract.'
-                : 'Exact text to match against (case-insensitive).';
+        // Detects date-like content in the prefix (month names, 4-digit years, date separators)
+        var DATE_IN_PREFIX = [
+            /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i,
+            /\b\d{4}\b/,
+            /\d{1,2}\/\d{1,2}\/\d{2,4}/,
+            /\d{1,2}-\d{1,2}-\d{2,4}/,
+        ];
+
+        function buildFriendlyPattern() {
+            var prefix  = document.getElementById('rulePrefix').value.trim();
+            var example = document.getElementById('ruleCaptureExample').value.trim();
+            var pattern = '';
+
+            // ── Choose the right capture group ───────────────────────────────
+            // The backend applies regex with Singleline mode, where "." matches newlines.
+            // Using (.+) would greedily consume the rest of the entire document.
+            // • (\S+)        — for single-token values (account numbers, invoice numbers, codes)
+            // • ([^\r\n]+)   — for values that may contain spaces but must not cross a line boundary
+            var captureGroup = (example && example.indexOf(' ') >= 0) ? '([^\\r\\n]+)' : '(\\S+)';
+
+            if (prefix) {
+                var escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                // Collapse whitespace sequences so minor spacing differences are tolerated
+                escaped = escaped.replace(/(?:\\ |\s)+/g, '\\s+');
+                pattern = escaped + '\\s+' + captureGroup;
+            } else if (example) {
+                // No prefix — capture the exact value wherever it appears on a line
+                pattern = '(' + example.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')';
+            }
+            document.getElementById('rulePattern').value = pattern;
+
+            // ── Date-in-prefix warning ────────────────────────────────────────
+            var dateWarn = document.getElementById('ruleDatePrefixWarning');
+            if (dateWarn) {
+                var hasDate = prefix && DATE_IN_PREFIX.some(function (re) { return re.test(prefix); });
+                dateWarn.style.display = hasDate ? '' : 'none';
+            }
+
+            // ── Update the preview sentence ───────────────────────────────────
+            var preview = document.getElementById('ruleFriendlyPreview');
+            var previewSpan = document.getElementById('previewPrefixText');
+            if (prefix && example) {
+                previewSpan.innerHTML = 'Find lines containing <strong>"' + escHtml(prefix) + '"</strong> and capture the value that follows — currently <strong class="text-success">"' + escHtml(example) + '"</strong>.';
+                preview.style.display = '';
+            } else if (!prefix && example) {
+                previewSpan.innerHTML = 'Find any line that contains <strong class="text-success">"' + escHtml(example) + '"</strong> and capture it as the value.';
+                preview.style.display = '';
+            } else {
+                preview.style.display = 'none';
+            }
+        }
+
+        function escHtml(s) {
+            return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        // ── Token picker: renders the selected line as clickable word-badges ──
+        // Supports range selection: click first word, then click another word to
+        // extend the selection across all tokens in between (e.g. "March 1, 2026").
+        function renderLineTokens(line) {
+            var wrap      = document.getElementById('ruleTokenPickerWrap');
+            var container = document.getElementById('ruleLineTokens');
+            var hintEl    = document.getElementById('ruleTokenHint');
+            container.innerHTML = '';
+            var tokens = line.trim().split(/\s+/);
+            if (tokens.length < 2) { wrap.style.display = 'none'; return; }
+
+            var rangeStart = -1;   // index of first clicked token (-1 = none)
+            var spans = [];
+
+            function applyHighlight(from, to) {
+                var lo = Math.min(from, to), hi = Math.max(from, to);
+                spans.forEach(function (s, i) {
+                    var inRange = (i >= lo && i <= hi);
+                    s.dataset.selected = inRange ? '1' : '';
+                    s.style.background = inRange ? '#0d6efd' : '#fff';
+                    s.style.color      = inRange ? '#fff'    : '#333';
+                    s.style.fontWeight = inRange ? '600'     : '400';
+                });
+                // prefix = everything before the first selected token
+                var prefix  = tokens.slice(0, lo).join(' ');
+                var example = tokens.slice(lo, hi + 1).join(' ');
+                document.getElementById('rulePrefix').value         = prefix;
+                document.getElementById('ruleCaptureExample').value = example;
+                buildFriendlyPattern();
+            }
+
+            tokens.forEach(function (tok, idx) {
+                var span = document.createElement('span');
+                span.textContent = tok;
+                span.className = 'badge border me-1 mb-1';
+                span.style.cssText = 'cursor:pointer;font-size:0.82rem;font-weight:400;background:#fff;color:#333;transition:background .1s;';
+                span.title = 'Click to select "' + tok + '"; click a second word to extend selection';
+
+                span.addEventListener('mouseenter', function () {
+                    if (!span.dataset.selected) span.style.background = '#e7f0ff';
+                    // Preview the range while hovering if a start is already set
+                    if (rangeStart >= 0 && rangeStart !== idx) {
+                        var lo = Math.min(rangeStart, idx), hi = Math.max(rangeStart, idx);
+                        spans.forEach(function (s, i) {
+                            if (!s.dataset.selected) {
+                                s.style.background = (i >= lo && i <= hi) ? '#cfe2ff' : '#fff';
+                            }
+                        });
+                    }
+                });
+                span.addEventListener('mouseleave', function () {
+                    if (!span.dataset.selected) span.style.background = '#fff';
+                    // Clear hover-preview on non-selected spans
+                    if (rangeStart >= 0) {
+                        spans.forEach(function (s) {
+                            if (!s.dataset.selected) s.style.background = '#fff';
+                        });
+                    }
+                });
+                span.addEventListener('click', function () {
+                    if (rangeStart === -1) {
+                        // First click — set range start, highlight single token
+                        rangeStart = idx;
+                        applyHighlight(idx, idx);
+                        if (hintEl) hintEl.innerHTML =
+                            '<strong>First word selected.</strong> Now click another word to extend the selection, or click the same word again to confirm.';
+                    } else if (rangeStart === idx) {
+                        // Clicked the same token again — confirm single selection, reset
+                        rangeStart = -1;
+                        applyHighlight(idx, idx);
+                        if (hintEl) hintEl.innerHTML =
+                            '<strong>Click once</strong> to select a single word. ' +
+                            '<strong>Click a second word</strong> to extend the selection (e.g. a full date like <em>March 1, 2026</em>).';
+                    } else {
+                        // Second click — extend selection to cover the range
+                        applyHighlight(rangeStart, idx);
+                        rangeStart = -1;
+                        if (hintEl) hintEl.innerHTML =
+                            '<strong>Click once</strong> to select a single word. ' +
+                            '<strong>Click a second word</strong> to extend the selection (e.g. a full date like <em>March 1, 2026</em>).';
+                    }
+                });
+                container.appendChild(span);
+                spans.push(span);
+            });
+
+            wrap.style.display = '';
+        }
+
+        function suggestPattern(line) {
+            var ct = document.getElementById('ruleConditionType').value;
+            if (ct === 'regex_match') {
+                renderLineTokens(line);
+                // Auto-select the last token as a starting suggestion
+                var tokens = line.trim().split(/\s+/);
+                var lastIdx = tokens.length - 1;
+                var prefix  = tokens.slice(0, lastIdx).join(' ');
+                var example = tokens[lastIdx] || '';
+                document.getElementById('rulePrefix').value         = prefix;
+                document.getElementById('ruleCaptureExample').value = example;
+                buildFriendlyPattern();
+                // Visually pre-select the last token badge (direct style, no range-start side-effect)
+                var badges = document.querySelectorAll('#ruleLineTokens span');
+                badges.forEach(function (b, bi) {
+                    var isLast = (bi === badges.length - 1);
+                    b.dataset.selected = isLast ? '1' : '';
+                    b.style.background = isLast ? '#0d6efd' : '#fff';
+                    b.style.color      = isLast ? '#fff'    : '#333';
+                    b.style.fontWeight = isLast ? '600'     : '400';
+                });
+            } else {
+                // Simple modes: the plain line text IS the match value
+                document.getElementById('rulePatternSimple').value = line;
+                document.getElementById('rulePattern').value       = line;
+            }
+        }
+
+        document.getElementById('rulePrefix').addEventListener('input', buildFriendlyPattern);
+        document.getElementById('ruleCaptureExample').addEventListener('input', buildFriendlyPattern);
+
+        document.getElementById('ruleClearPrefix').addEventListener('click', function () {
+            document.getElementById('rulePrefix').value = '';
+            buildFriendlyPattern();
         });
+
+        // Sync simple builder → rulePattern
+        document.getElementById('rulePatternSimple').addEventListener('input', function () {
+            document.getElementById('rulePattern').value = this.value;
+        });
+
+        document.getElementById('ruleConditionType').addEventListener('change', function () {
+            showBuilderForConditionType(this.value);
+            var selected = document.querySelector('#pdfLinesContainer .pdf-line-item.bg-primary');
+            if (selected) suggestPattern(selected.getAttribute('data-line') || selected.textContent);
+        });
+
+        // Advanced toggle
+        document.getElementById('toggleAdvancedPattern').addEventListener('click', function () {
+            var panel = document.getElementById('advancedPatternPanel');
+            var showing = panel.style.display !== 'none';
+            panel.style.display = showing ? 'none' : '';
+            this.textContent = showing ? '⚙ Advanced — show raw pattern' : '⚙ Advanced — hide raw pattern';
+        });
+
+        // Returns the correct pattern regardless of which builder is active
+        function getActivePattern() {
+            var ct = document.getElementById('ruleConditionType').value;
+            if (ct !== 'regex_match') {
+                return document.getElementById('rulePatternSimple').value.trim();
+            }
+            return document.getElementById('rulePattern').value.trim();
+        }
 
         document.getElementById('ruleTestBtn').addEventListener('click', function () {
             var btn = this;
             btn.disabled = true;
+            var pattern = getActivePattern();
+            if (!pattern) {
+                alert('Please click a line above first, or enter a value.');
+                btn.disabled = false;
+                return;
+            }
             var payload = {
                 carrierId:      _ruleCarrierId,
                 pdfText:        _rulePdfText,
                 conditionType:  document.getElementById('ruleConditionType').value,
-                regexPattern:   document.getElementById('rulePattern').value
+                regexPattern:   pattern
             };
             fetch('/CarrierRules/Test', {
                 method: 'POST',
@@ -1790,10 +2382,111 @@
             .finally(function () { btn.disabled = false; });
         });
 
+        // ── Re-parse helpers ──────────────────────────────────────────────────
+        function showReparseBanner(type, msg) {
+            var banner = document.getElementById('reparseBanner');
+            var icon   = document.getElementById('reparseBannerIcon');
+            var msgEl  = document.getElementById('reparseBannerMsg');
+            banner.className = 'alert d-flex align-items-center gap-2 mb-3 alert-' + type;
+            icon.textContent  = type === 'success' ? '✓' : type === 'danger' ? '✗' : '⟳';
+            msgEl.innerHTML   = msg;
+            banner.style.removeProperty('display');
+            banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function buildChargeRow(charge, idx) {
+            var desc = (charge.description || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+            var amt  = charge.amount  || '';
+            var line = (charge.line     || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+            var loc  = (charge.location || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+            return '<tr data-auto="true" data-orig-desc="' + desc + '" data-orig-amt="' + amt + '">'
+                + '<td class="text-center align-middle row-number">' + (idx + 1) + '</td>'
+                + '<td class="text-center align-middle"><span class="badge bg-success badge-status" title="Auto-detected">Auto</span></td>'
+                + '<td><input name="Charges[' + idx + '].ChargeDescription" value="' + desc + '" class="form-control form-control-sm charge-desc" /></td>'
+                + '<td><div class="input-group input-group-sm"><span class="input-group-text">$</span>'
+                + '<input name="Charges[' + idx + '].Amount" value="' + amt + '" type="number" step="0.01" class="form-control form-control-sm charge-amount" /></div></td>'
+                + '<td><input name="Charges[' + idx + '].Line" value="' + line + '" class="form-control form-control-sm" /></td>'
+                + '<td><input name="Charges[' + idx + '].Location" value="' + loc + '" class="form-control form-control-sm" /></td>'
+                + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger remove-row">X</button></td>'
+                + '</tr>';
+        }
+
+        function applyReparseResults(data) {
+            var tbody = document.getElementById('chargesTableBody');
+            tbody.innerHTML = data.charges.map(function (c, i) { return buildChargeRow(c, i); }).join('');
+
+            var countBadge = document.querySelector('#chargesPane .badge-status');
+            if (countBadge) {
+                countBadge.className = data.chargeCount > 0
+                    ? 'badge bg-success badge-status ms-2'
+                    : 'badge bg-secondary badge-status ms-2';
+                countBadge.textContent = data.chargeCount + ' Auto';
+            }
+
+            var s = data.summary;
+            function setInput(name, val) {
+                var el = document.querySelector('[name="' + name + '"]');
+                if (el && val != null) el.value = val;
+            }
+            setInput('InvoiceNumber',       s.invoiceNumber);
+            setInput('CarrierAccount',      s.carrierAccount);
+            setInput('InvoiceDate',         s.invoiceDate);
+            setInput('InvoiceStartDate',    s.invoiceStartDate);
+            setInput('InvoiceEndDate',      s.invoiceEndDate);
+            setInput('InvoiceDueDate',      s.invoiceDueDate);
+            setInput('BeginningBalance',    s.beginningBalance);
+            setInput('Payment',             s.payment);
+            setInput('PreviousAdjustments', s.previousAdjustments);
+            setInput('CurrentAdjustments',  s.currentAdjustments);
+            setInput('CurrentCharges',      s.currentCharges);
+            setInput('CurrentTax',          s.currentTax);
+            setInput('EndingBalance',       s.endingBalance);
+
+            if (typeof updateTotal === 'function') updateTotal();
+            if (typeof applySearchAndFilters === 'function') applySearchAndFilters();
+            if (typeof renderPage === 'function') renderPage();
+
+            showReparseBanner('success',
+                '<strong>Invoice re-parsed</strong> — found <strong>' + data.chargeCount + '</strong> charge(s) using the latest rules.'
+                + ' <a href="/CarrierRules/Index/' + _ruleCarrierId + '" class="alert-link ms-2">View all rules →</a>');
+        }
+
+        function reparseInvoice() {
+            var pdfText = (document.querySelector('[name="PdfText"]') || {}).value || '';
+            if (!pdfText) {
+                showReparseBanner('warning', 'No PDF text stored — please re-upload the invoice to refresh results.');
+                return;
+            }
+            var btn = document.getElementById('reparseBtn');
+            if (btn) { btn.disabled = true; btn.textContent = '⟳ Parsing…'; }
+            showReparseBanner('info', '<span class="spinner-border spinner-border-sm me-2"></span> Re-parsing invoice with the latest rules…');
+
+            var token = document.querySelector('[name="__RequestVerificationToken"]').value;
+            var form  = new FormData();
+            form.append('__RequestVerificationToken', token);
+            form.append('carrierId', _ruleCarrierId);
+            form.append('pdfText',   pdfText);
+
+            fetch('/api/invoice/reparse', { method: 'POST', body: form })
+            .then(function (r) {
+                if (!r.ok) return r.json().then(function (e) { throw new Error(e.error || 'Server error ' + r.status); });
+                return r.json();
+            })
+            .then(function (data) { applyReparseResults(data); })
+            .catch(function (err) {
+                showReparseBanner('danger', 'Re-parse failed: ' + err.message + '. Please refresh the page and try again.');
+            })
+            .finally(function () {
+                if (btn) { btn.disabled = false; btn.textContent = '🔄 Re-parse'; }
+            });
+        }
+
+        document.getElementById('reparseBtn').addEventListener('click', reparseInvoice);
+
         document.getElementById('saveRuleBtn').addEventListener('click', function () {
             var btn = this;
-            var pattern = document.getElementById('rulePattern').value.trim();
-            if (!pattern) { alert('Please enter a pattern or select a line first.'); return; }
+            var pattern = getActivePattern();
+            if (!pattern) { alert('Please click a line above first, or enter a value.'); return; }
 
             btn.disabled = true;
             var token = document.querySelector('[name="__RequestVerificationToken"]').value;
@@ -1814,14 +2507,7 @@
             .then(function (data) {
                 if (data.success) {
                     _ruleModal.hide();
-                    var toast = document.createElement('div');
-                    toast.className = 'alert alert-success alert-dismissible position-fixed bottom-0 end-0 m-3';
-                    toast.style.zIndex = '9999';
-                    toast.innerHTML = '✓ ' + data.message
-                        + ' <a href="/CarrierRules/Index/' + _ruleCarrierId + '" class="alert-link">View rules</a>'
-                        + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
-                    document.body.appendChild(toast);
-                    setTimeout(function () { toast.remove(); }, 6000);
+                    reparseInvoice();   // automatically re-parse with the new rule
                 } else {
                     alert('Could not save: ' + data.message);
                 }
@@ -1849,5 +2535,33 @@
 
             showLoadingOverlay('Please wait... we are saving your feedback to help us improve.');
         });
+
+        // ── Collect intentionally-cleared summary fields ─────────────────────────
+        // Called just before the Save form submits. Detects summary fields that had
+        // an auto-detected value (data-original != '') but are now empty, meaning the
+        // user deliberately removed the value and wants it skipped on future invoices.
+        function collectSkippedFields() {
+            // Map from model property name to a friendly label (used for logging only)
+            var summaryInputs = [
+                'BeginningBalance', 'Payment', 'PreviousAdjustments',
+                'CurrentAdjustments', 'CurrentCharges', 'CurrentTax', 'EndingBalance',
+                'InvoiceNumber', 'CarrierAccount', 'InvoiceDate',
+                'InvoiceStartDate', 'InvoiceEndDate', 'InvoiceDueDate'
+            ];
+
+            var skipped = [];
+            summaryInputs.forEach(function (name) {
+                var input = document.querySelector('[name="' + name + '"]');
+                if (!input) return;
+                var original = (input.getAttribute('data-original') || '').trim();
+                var current  = input.value.trim();
+                // Field had a value but user cleared it → mark as intentionally skipped
+                if (original !== '' && current === '') {
+                    skipped.push(name);
+                }
+            });
+
+            document.getElementById('hSkippedSummaryFields').value = skipped.join(',');
+        }
     </script>
 }

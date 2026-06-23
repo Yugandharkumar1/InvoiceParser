@@ -1,6 +1,6 @@
 @model IEnumerable<InvoiceParser.Core.Entities.VendorParsingRule>
 @{
-    ViewData["Title"] = $"Extraction Rules — {ViewBag.CarrierName}";
+    ViewData["Title"] = $"Carrier Rules — {ViewBag.CarrierName}";
     int carrierId = (int)ViewBag.CarrierId;
     string carrierName = ViewBag.CarrierName ?? "Carrier";
 
@@ -18,7 +18,7 @@
                 <li class="breadcrumb-item active">@carrierName</li>
             </ol>
         </nav>
-        <h4 class="mb-0">@carrierName — Extraction Rules</h4>
+        <h4 class="mb-0">@carrierName — Carrier Rules</h4>
         <p class="text-muted small mb-0">
             Rules run after ML extraction. Each section maps to a separate database table.
             Click <strong>+ Add</strong> in any section to add a rule for that table only.
@@ -55,7 +55,7 @@
     Section        = "t_invoice",
     CarrierId      = carrierId,
     Rules          = summaryRules,
-    ShowDeleteBtn  = false,
+    ShowDeleteBtn  = true,
 })
 
 <!-- ═══ LINE ITEM / CHARGE RULES (t_charge) ══════════════════════════════ -->

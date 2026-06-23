@@ -9,6 +9,8 @@ public interface IInvoiceRepository
     Task<Carrier?> GetCarrierByIdAsync(int id);
     Task<List<VendorParsingRule>> GetRulesForCarrierAsync(int carrierId);
     Task<List<VendorParsingRule>> GetAllRulesForCarrierAsync(int carrierId);
+    /// <summary>Returns all active rules across every carrier — used to generate ML training samples from rules.</summary>
+    Task<List<VendorParsingRule>> GetAllActiveRulesAsync();
     Task<VendorParsingRule?> GetRuleByIdAsync(int id);
     Task<VendorParsingRule> SaveRuleAsync(VendorParsingRule rule);
     Task UpdateRuleAsync(VendorParsingRule rule);
@@ -31,6 +33,7 @@ public interface IInvoiceRepository
     Task SaveUsagesAsync(List<Usage> usages);
     Task SaveInventoriesAsync(List<Inventory> inventories);
     Task<Invoice?> FindDuplicateInvoiceAsync(string? invoiceNumber, int? carrierId);
+    Task DeleteInvoiceAsync(int id);
     Task SaveInvoiceWithRelatedDataAsync(Invoice invoice, List<Usage> usages, List<Inventory> inventories);
     Task<List<LineFeedback>> GetAllLineFeedbackAsync();
     Task SaveLineFeedbackAsync(LineFeedback feedback);

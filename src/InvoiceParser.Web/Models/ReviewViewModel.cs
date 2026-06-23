@@ -53,6 +53,12 @@ public class ReviewViewModel
     /// <summary>JSON-serialized list of original charge descriptions/amounts from parser for feedback diff.</summary>
     public string? OriginalChargesJson { get; set; }
 
+    /// <summary>When true, replace an existing invoice with the same number instead of blocking.</summary>
+    public bool OverwriteExisting { get; set; }
+
+    /// <summary>Comma-separated list of summary field names the user intentionally cleared (e.g. "PreviousAdjustments").</summary>
+    public string? SkippedSummaryFields { get; set; }
+
     public List<ReviewChargeItem> Charges { get; set; } = new();
     public List<ReviewUsageItem> Usages { get; set; } = new();
     public List<ReviewInventoryItem> Inventories { get; set; } = new();

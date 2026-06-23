@@ -39,6 +39,19 @@ public class InvoiceRepository : IInvoiceRepository
             .ThenBy(r => r.FieldName)
             .ToListAsync();
 
+    public async Task<List<VendorParsingRule>> GetAllActiveRulesAsync()
+        => await _db.VendorParsingRules
+            .Where(r => r.IsActive
+                     && r.TargetTable == "t_invoice"          // summary fields only for now
+                     && r.FieldType  != "skip"                // skip rules produce no value
+                     && r.FieldType  != "line_anchor"
+                     && r.FieldType  != "location_anchor"
+                     && !string.IsNullOrEmpty(r.RegexPattern) // must have a pattern to apply
+                     && (r.SuccessCount >= r.FailCount))      // only rules that work more than they fail
+            .OrderBy(r => r.CarrierId)
+            .ThenBy(r => r.FieldName)
+            .ToListAsync();
+
     public async Task<VendorParsingRule?> GetRuleByIdAsync(int id)
         => await _db.VendorParsingRules.FindAsync(id);
 
@@ -83,6 +96,8 @@ public class InvoiceRepository : IInvoiceRepository
     public async Task<Invoice?> GetInvoiceByIdAsync(int id)
         => await _db.Invoices
             .Include(i => i.Charges)
+            .Include(i => i.Usages)
+            .Include(i => i.Inventories)
             .FirstOrDefaultAsync(i => i.Id == id);
 
     public async Task<List<Invoice>> GetAllInvoicesAsync()
@@ -253,6 +268,18 @@ public class InvoiceRepository : IInvoiceRepository
 
         return await _db.Invoices.FirstOrDefaultAsync(i =>
             i.InvoiceNumber == invoiceNumber && i.CarrierId == carrierId);
+    }
+
+    public async Task DeleteInvoiceAsync(int id)
+    {
+        var invoice = await _db.Invoices
+            .Include(i => i.Charges)
+            .FirstOrDefaultAsync(i => i.Id == id);
+        if (invoice != null)
+        {
+            _db.Invoices.Remove(invoice);
+            await _db.SaveChangesAsync();
+        }
     }
 
     public async Task SaveInvoiceWithRelatedDataAsync(Invoice invoice, List<Usage> usages, List<Inventory> inventories)

@@ -12,6 +12,7 @@ namespace InvoiceParser.Web.Controllers;
 public class CarrierRulesController : Controller
 {
     private readonly IInvoiceRepository _repo;
+    private readonly ICarrierRuleStore _ruleStore;
     private readonly GenericInvoiceParser _parser;
     private readonly PdfTextExtractorService _pdfExtractor;
     private readonly ILogger<CarrierRulesController> _logger;
@@ -26,6 +27,7 @@ public class CarrierRulesController : Controller
     private static readonly string[] KnownChargeFields =
     {
         "line_number", "location", "charge_desc", "amount",
+        "section_start", "section_end",
     };
 
     private static readonly string[] KnownUsageFields =
@@ -62,7 +64,10 @@ public class CarrierRulesController : Controller
         ["Charge Amount"]       = new("amount",            "t_charge",  "decimal",         "The dollar amount for this charge line."),
         ["Line Number"]         = new("line_number",       "t_charge",  "line_anchor",     "Sets the phone/circuit number context for the charges that follow (e.g. 'FOR 061-827-9465')."),
         ["Location"]            = new("location",          "t_charge",  "location_anchor", "Sets the service address context for charges that follow (e.g. 'Service at: BEND, OR')."),
+        ["Section Start"]       = new("section_start",     "t_charge",  "section_start",   "When a line matches this condition, begin collecting charge rows below it (e.g. 'Charges For', 'Current Activity')."),
+        ["Section End"]         = new("section_end",       "t_charge",  "section_end",     "When a line matches this condition, stop collecting charges (e.g. 'Subtotal', 'Total Due', 'BALANCE DUE')."),
         ["Skip Charge Line"]    = new("skip",              "t_charge",  "skip",            "Lines matching this rule will be completely ignored during charge extraction."),
+        ["Line Before Price"]   = new("line_before_price", "t_charge",  "line_before_price", "For table-format invoices: when a price line matches, the system automatically finds the product name above it. No offset needed."),
 
         // ── Usage Records (t_usage) ──────────────────────────────────────────
         ["Usage – Line Number"] = new("line_number",       "t_usage",   "string",          "The phone/circuit number associated with this usage record."),
@@ -83,11 +88,13 @@ public class CarrierRulesController : Controller
     };
 
     public CarrierRulesController(IInvoiceRepository repo,
+        ICarrierRuleStore ruleStore,
         GenericInvoiceParser parser,
         PdfTextExtractorService pdfExtractor,
         ILogger<CarrierRulesController> logger)
     {
         _repo = repo;
+        _ruleStore = ruleStore;
         _parser = parser;
         _pdfExtractor = pdfExtractor;
         _logger = logger;
@@ -99,7 +106,7 @@ public class CarrierRulesController : Controller
         var carrier = await _repo.GetCarrierByIdAsync(carrierId);
         if (carrier == null) return NotFound();
 
-        var rules = await _repo.GetAllRulesForCarrierAsync(carrierId);
+        var rules = await _ruleStore.GetAllRulesForCarrierAsync(carrierId);
         ViewBag.Carrier = carrier;
         ViewBag.CarrierId = carrierId;
         return View(rules);
@@ -110,6 +117,40 @@ public class CarrierRulesController : Controller
     {
         var carriers = await _repo.GetCarriersAsync();
         return View(carriers);
+    }
+
+    // GET /CarrierRules/DetectionKeywords/{carrierId}
+    public async Task<IActionResult> DetectionKeywords(int carrierId)
+    {
+        var carrier = await _repo.GetCarrierByIdAsync(carrierId);
+        if (carrier == null) return NotFound();
+
+        var keywords = await _ruleStore.GetDetectionKeywordsAsync(carrierId);
+        ViewBag.CarrierId   = carrierId;
+        ViewBag.CarrierName = carrier.Name;
+        ViewBag.CarrierCode = carrier.Code;
+        return View(keywords);
+    }
+
+    // POST /CarrierRules/DetectionKeywords/{carrierId}
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DetectionKeywords(int carrierId, [FromForm] string? keywordsRaw)
+    {
+        var carrier = await _repo.GetCarrierByIdAsync(carrierId);
+        if (carrier == null) return NotFound();
+
+        var keywords = (keywordsRaw ?? "")
+            .Split(new[] { '\n', '\r', ',' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(k => k.Trim())
+            .Where(k => k.Length >= 2)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(k => k)
+            .ToList();
+
+        await _ruleStore.SaveDetectionKeywordsAsync(carrierId, keywords);
+        TempData["SuccessMessage"] = $"Detection keywords saved for {carrier.Name}. {keywords.Count} keyword(s) active.";
+        return RedirectToAction(nameof(DetectionKeywords), new { carrierId });
     }
 
     // GET /CarrierRules/Create/{carrierId}
@@ -172,10 +213,10 @@ public class CarrierRulesController : Controller
         return View();
     }
 
-    // GET /CarrierRules/Edit/{id}
-    public async Task<IActionResult> Edit(int id)
+    // GET /CarrierRules/Edit/{id}?carrierId={carrierId}
+    public async Task<IActionResult> Edit(int id, int carrierId)
     {
-        var rule = await _repo.GetRuleByIdAsync(id);
+        var rule = await _ruleStore.GetRuleByIdAsync(carrierId, id);
         if (rule == null) return NotFound();
 
         var carrier = await _repo.GetCarrierByIdAsync(rule.CarrierId);
@@ -210,7 +251,7 @@ public class CarrierRulesController : Controller
         }
 
         var rule = vm.Id > 0
-            ? (await _repo.GetRuleByIdAsync(vm.Id))!
+            ? (await _ruleStore.GetRuleByIdAsync(vm.CarrierId, vm.Id))!
             : new VendorParsingRule { CarrierId = vm.CarrierId };
 
         if (rule == null) return NotFound();
@@ -218,37 +259,36 @@ public class CarrierRulesController : Controller
         MapFromViewModel(vm, rule);
 
         if (vm.Id > 0)
-            await _repo.UpdateRuleAsync(rule);
+            await _ruleStore.UpdateRuleAsync(rule);
         else
-            await _repo.SaveRuleAsync(rule);
+            await _ruleStore.AddRuleAsync(rule);
 
         TempData["SuccessMessage"] = $"Rule '{rule.FieldName}' saved.";
         return RedirectToAction("Index", new { carrierId = rule.CarrierId });
     }
 
-    // POST /CarrierRules/Delete/{id}
+    // POST /CarrierRules/Delete/{id}?carrierId={carrierId}
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Delete(int id)
+    public async Task<IActionResult> Delete(int id, int carrierId)
     {
-        var rule = await _repo.GetRuleByIdAsync(id);
+        var rule = await _ruleStore.GetRuleByIdAsync(carrierId, id);
         if (rule == null) return NotFound();
-        var carrierId = rule.CarrierId;
-        await _repo.DeleteRuleAsync(id);
+        await _ruleStore.DeleteRuleAsync(carrierId, id);
         TempData["SuccessMessage"] = "Rule deleted.";
         return RedirectToAction("Index", new { carrierId });
     }
 
-    // POST /CarrierRules/Toggle/{id}
+    // POST /CarrierRules/Toggle/{id}?carrierId={carrierId}
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Toggle(int id)
+    public async Task<IActionResult> Toggle(int id, int carrierId)
     {
-        var rule = await _repo.GetRuleByIdAsync(id);
+        var rule = await _ruleStore.GetRuleByIdAsync(carrierId, id);
         if (rule == null) return NotFound();
         rule.IsActive = !rule.IsActive;
-        await _repo.UpdateRuleAsync(rule);
-        return RedirectToAction("Index", new { carrierId = rule.CarrierId });
+        await _ruleStore.UpdateRuleAsync(rule);
+        return RedirectToAction("Index", new { carrierId });
     }
 
     // POST /CarrierRules/Test — JSON endpoint used by the rule editor's "Test Pattern" button
@@ -344,7 +384,7 @@ public class CarrierRulesController : Controller
         MapFromViewModel(vm, rule);
         rule.IsActive = true;
 
-        await _repo.SaveRuleAsync(rule);
+        await _ruleStore.AddRuleAsync(rule);
 
         return Json(new { success = true, message = $"Rule for '{rule.FieldName}' saved." });
     }
@@ -424,6 +464,8 @@ public class CarrierRulesController : Controller
             ConditionType = rule.ConditionType,
             ConditionSource = rule.ConditionSource,
             TransformationsJson = rule.TransformationsJson,
+            DescriptionLineOffset = rule.DescriptionLineOffset,
+            AmountPattern = rule.AmountPattern,
         };
 
     private static void MapFromViewModel(RuleEditViewModel vm, VendorParsingRule rule)
@@ -439,12 +481,16 @@ public class CarrierRulesController : Controller
         rule.ConditionSource = vm.ConditionSource ?? "line_text";
         rule.TransformationsJson = string.IsNullOrWhiteSpace(vm.TransformationsJson)
             ? null : vm.TransformationsJson.Trim();
+        rule.DescriptionLineOffset = vm.DescriptionLineOffset == 0 ? -1 : vm.DescriptionLineOffset;
+        rule.AmountPattern = string.IsNullOrWhiteSpace(vm.AmountPattern) ? null : vm.AmountPattern.Trim();
     }
 
     private void PopulateViewBag(int carrierId, string carrierName)
     {
         ViewBag.CarrierId = carrierId;
         ViewBag.CarrierName = carrierName;
+
+        // Hidden selects kept for model binding — UI uses friendly pickers
         ViewBag.ConditionTypes = new SelectList(new[]
         {
             new { Value = "regex_match",       Text = "Regex Match" },
@@ -481,8 +527,12 @@ public class CarrierRulesController : Controller
             new { Value = "date",            Text = "Date" },
             new { Value = "decimal",         Text = "Decimal / Amount" },
             new { Value = "skip",            Text = "Skip (ignore matching lines)" },
+            new { Value = "table_row",           Text = "Table Row (multi-line: description above price line)" },
+            new { Value = "line_before_price",   Text = "Line Before Price (auto-find product name above trigger line)" },
             new { Value = "line_anchor",     Text = "Line Anchor (sets Line Number context)" },
             new { Value = "location_anchor", Text = "Location Anchor (sets Location context)" },
+            new { Value = "section_start",   Text = "Section Start (begin collecting charges here)" },
+            new { Value = "section_end",     Text = "Section End (stop collecting charges here)" },
         }, "Value", "Text");
 
         ViewBag.KnownFields = KnownSummaryFields
@@ -493,20 +543,70 @@ public class CarrierRulesController : Controller
             .Select(f => new SelectListItem(f, f))
             .ToList();
 
+        // Grouped field options for the friendly picker (JSON for JS)
+        ViewBag.FieldOptionsJson = JsonSerializer.Serialize(new[]
+        {
+            new { group = "Invoice Summary", fields = new[]
+            {
+                new { value = "invoice_number|t_invoice|string",   label = "Invoice Number" },
+                new { value = "carrier_account|t_invoice|string",  label = "Account Number" },
+                new { value = "invoice_date|t_invoice|date",       label = "Invoice Date" },
+                new { value = "invoice_st_dtm|t_invoice|date",     label = "Service Start Date" },
+                new { value = "invoice_end_dtm|t_invoice|date",    label = "Service End Date" },
+                new { value = "invoice_due_dtm|t_invoice|date",    label = "Due Date" },
+                new { value = "beg_bal|t_invoice|decimal",         label = "Previous Balance" },
+                new { value = "payment|t_invoice|decimal",         label = "Payments" },
+                new { value = "prev_adj|t_invoice|decimal",        label = "Previous Adjustments" },
+                new { value = "curr_adj|t_invoice|decimal",        label = "Current Adjustments" },
+                new { value = "curr_chg|t_invoice|decimal",        label = "Current Charges" },
+                new { value = "curr_tax|t_invoice|decimal",        label = "Taxes" },
+                new { value = "end_bal|t_invoice|decimal",         label = "Total Charges (Balance Due)" },
+            }},
+            new { group = "Charge Lines", fields = new[]
+            {
+                new { value = "charge_desc|t_charge|string",          label = "Charge Description" },
+                new { value = "amount|t_charge|decimal",              label = "Charge Amount" },
+                new { value = "line_number|t_charge|string",          label = "Line Number" },
+                new { value = "location|t_charge|string",             label = "Location" },
+                new { value = "table_row|t_charge|table_row",               label = "Table Row — product name is a fixed number of lines above the price" },
+                new { value = "line_before_price|t_charge|line_before_price", label = "Line Before Price — automatically find the product name above the price line" },
+                new { value = "section_start|t_charge|section_start", label = "Section Start — where charges begin" },
+                new { value = "section_end|t_charge|section_end",     label = "Section End — where charges stop" },
+                new { value = "skip|t_charge|skip",                   label = "Skip Line — ignore this line" },
+            }},
+            new { group = "Usage Records", fields = new[]
+            {
+                new { value = "line_number|t_usage|string",        label = "Line Number" },
+                new { value = "usoc_name|t_usage|string",          label = "Usage / Plan Name" },
+                new { value = "usage_limit|t_usage|decimal",       label = "Usage Limit" },
+                new { value = "usage|t_usage|decimal",             label = "Usage Amount" },
+                new { value = "charge|t_usage|decimal",            label = "Usage Charge" },
+                new { value = "usagetype|t_usage|string",          label = "Usage Type" },
+            }},
+            new { group = "Inventory", fields = new[]
+            {
+                new { value = "reference_number|t_inventory|string",  label = "Reference Number" },
+                new { value = "service_type|t_inventory|string",      label = "Service Type" },
+                new { value = "inventory_name|t_inventory|string",    label = "Item Name" },
+                new { value = "employee_name|t_inventory|string",     label = "Employee Name" },
+                new { value = "location_name|t_inventory|string",     label = "Location" },
+            }},
+        });
+
         // Pre-serialize to JSON so Razor can inline it directly without dynamic binding
         ViewBag.TransformTypesJson = JsonSerializer.Serialize(new[]
         {
-            new { value = "remove_prefix",   label = "Remove Prefix",           hasV1 = true,  hasV2 = false, v1label = "Prefix to remove" },
-            new { value = "remove_suffix",   label = "Remove Suffix",           hasV1 = true,  hasV2 = false, v1label = "Suffix to remove" },
-            new { value = "replace",         label = "Replace Text",            hasV1 = true,  hasV2 = true,  v1label = "Find text" },
-            new { value = "trim",            label = "Trim Whitespace",         hasV1 = false, hasV2 = false, v1label = "" },
-            new { value = "extract_between", label = "Extract Between",         hasV1 = true,  hasV2 = true,  v1label = "Start marker" },
-            new { value = "regex_extract",   label = "Regex Extract (Grp 1)",   hasV1 = true,  hasV2 = false, v1label = "Regex pattern" },
-            new { value = "convert_date",    label = "Convert Date Format",     hasV1 = true,  hasV2 = true,  v1label = "Input format (e.g. MM/dd/yy)" },
-            new { value = "to_upper",        label = "To Upper Case",           hasV1 = false, hasV2 = false, v1label = "" },
-            new { value = "to_lower",        label = "To Lower Case",           hasV1 = false, hasV2 = false, v1label = "" },
-            new { value = "join_next_line",  label = "Join Next Line",          hasV1 = true,  hasV2 = false, v1label = "Separator (default: space)" },
-            new { value = "join_prev_line",  label = "Join Previous Line",      hasV1 = true,  hasV2 = false, v1label = "Separator (default: space)" },
+            new { value = "trim",            label = "Remove extra spaces (trim)",               hasV1 = false, hasV2 = false, v1label = "",                                            v2label = "" },
+            new { value = "remove_prefix",   label = "Remove text from the beginning",           hasV1 = true,  hasV2 = false, v1label = "Text to remove at start",                    v2label = "" },
+            new { value = "remove_suffix",   label = "Remove text from the end",                 hasV1 = true,  hasV2 = false, v1label = "Text to remove at end",                      v2label = "" },
+            new { value = "replace",         label = "Find and replace text",                    hasV1 = true,  hasV2 = true,  v1label = "Text to find",                               v2label = "Replace with" },
+            new { value = "extract_between", label = "Keep only text between two markers",       hasV1 = true,  hasV2 = true,  v1label = "Start marker (text before what you want)",   v2label = "End marker (text after what you want)" },
+            new { value = "convert_date",    label = "Convert date format",                      hasV1 = true,  hasV2 = true,  v1label = "Current format (e.g. MM/dd/yyyy)",            v2label = "Target format (e.g. yyyy-MM-dd)" },
+            new { value = "join_next_line",  label = "Combine with the next line",               hasV1 = true,  hasV2 = false, v1label = "Separator between lines (default: space)",    v2label = "" },
+            new { value = "join_prev_line",  label = "Combine with the previous line",           hasV1 = true,  hasV2 = false, v1label = "Separator between lines (default: space)",    v2label = "" },
+            new { value = "regex_remove",    label = "Remove a specific pattern",                hasV1 = true,  hasV2 = false, v1label = "Pattern to remove (e.g. a date like 6/1/2026)", v2label = "" },
+            new { value = "to_upper",        label = "Convert to UPPER CASE",                    hasV1 = false, hasV2 = false, v1label = "",                                            v2label = "" },
+            new { value = "to_lower",        label = "Convert to lower case",                    hasV1 = false, hasV2 = false, v1label = "",                                            v2label = "" },
         });
     }
 }
@@ -528,6 +628,10 @@ public class RuleEditViewModel
     public string ConditionType { get; set; } = "regex_match";
     public string ConditionSource { get; set; } = "line_text";
     public string? TransformationsJson { get; set; }
+
+    // Table-row rule settings
+    public int DescriptionLineOffset { get; set; } = -1;
+    public string? AmountPattern { get; set; }
 }
 
 public record WizardFieldDef(string FieldName, string TargetTable, string FieldType, string Description);

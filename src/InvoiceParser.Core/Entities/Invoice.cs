@@ -85,4 +85,6 @@ public class Invoice
     public string? PdfText { get; set; }
 
     public ICollection<Charge> Charges { get; set; } = new List<Charge>();
+    public ICollection<Usage> Usages { get; set; } = new List<Usage>();
+    public ICollection<Inventory> Inventories { get; set; } = new List<Inventory>();
 }
