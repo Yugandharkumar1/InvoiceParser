@@ -1,0 +1,38 @@
+[
+  {
+    "Id": 1,
+    "CarrierId": 1144,
+    "FieldName": "carrier_account",
+    "RegexPattern": "Bill#\\s\u002B(\\S\u002B)",
+    "FieldType": "string",
+    "TargetTable": "t_invoice",
+    "Section": null,
+    "SortOrder": 10,
+    "IsActive": true,
+    "SuccessCount": 0,
+    "FailCount": 0,
+    "ConditionType": "regex_match",
+    "ConditionSource": "line_text",
+    "TransformationsJson": null,
+    "DescriptionLineOffset": -1,
+    "AmountPattern": null
+  },
+  {
+    "Id": 2,
+    "CarrierId": 1144,
+    "FieldName": "invoice_due_dtm",
+    "RegexPattern": "Due:\\s\u002BSat,\\s\u002B([^\\r\\n]\u002B)",
+    "FieldType": "string",
+    "TargetTable": "t_invoice",
+    "Section": null,
+    "SortOrder": 10,
+    "IsActive": true,
+    "SuccessCount": 0,
+    "FailCount": 0,
+    "ConditionType": "regex_match",
+    "ConditionSource": "line_text",
+    "TransformationsJson": null,
+    "DescriptionLineOffset": -1,
+    "AmountPattern": null
+  }
+]

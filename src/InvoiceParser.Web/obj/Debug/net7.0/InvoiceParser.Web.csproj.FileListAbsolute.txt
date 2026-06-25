@@ -602,3 +602,4 @@ E:\VCOM\InvoiceParser\src\InvoiceParser.Web\bin\Debug\net7.0\RuleDefinitions\149
 E:\VCOM\InvoiceParser\src\InvoiceParser.Web\bin\Debug\net7.0\RuleDefinitions\1494.rules.json
 E:\VCOM\InvoiceParser\src\InvoiceParser.Web\bin\Debug\net7.0\RuleDefinitions\90.detection.json
 E:\VCOM\InvoiceParser\src\InvoiceParser.Web\bin\Debug\net7.0\RuleDefinitions\90.rules.json
+E:\VCOM\InvoiceParser\src\InvoiceParser.Web\bin\Debug\net7.0\RuleDefinitions\1144.detection.json

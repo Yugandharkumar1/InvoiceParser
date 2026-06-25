@@ -13,10 +13,13 @@ if (builder.Environment.IsDevelopment())
     mvcBuilder.AddRazorRuntimeCompilation();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"),
+        sql => sql.CommandTimeout(120)));
 
+// IPath is a remote server — use a longer timeout to handle slow network/server responses.
 builder.Services.AddDbContext<IPathDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("IPathConnection")));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("IPathConnection"),
+        sql => sql.CommandTimeout(180)));
 
 var openAiSettings = builder.Configuration.GetSection("OpenAi").Get<OpenAiSettings>() ?? new OpenAiSettings();
 builder.Services.AddSingleton(openAiSettings);
