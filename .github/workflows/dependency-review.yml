@@ -1,0 +1,29 @@
+name: 'Dependency Review - Actions'
+on:
+  push:
+    branches:
+      - master
+      - main
+      - develop
+  pull_request:
+    branches:
+      - master
+      - main
+      - develop
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Workflow-level permissions are the default for any job that does not declare its own;
+# the job-level block below is the operative grant for the reusable workflow call.
+# Note: omitted permissions default to `none`, so we must explicitly list every scope
+# the callee needs -- in particular, `contents: read` for the checkout step.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review-and-merge:
+    uses: AppDirect/actions/.github/workflows/dependency-review.yml@master
+    permissions:
+      contents: read        # required by the callee's actions/checkout step
+      pull-requests: write  # required for dependency-review-action to post its PR comment summary
