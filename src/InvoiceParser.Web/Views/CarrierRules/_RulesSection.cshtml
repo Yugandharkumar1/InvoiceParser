@@ -190,15 +190,22 @@
     };
 
     // ── Readable pattern — strips regex escapes for human display ──────────────
+    // Capture groups (...) → [value]   (the token being captured)
+    // Bare \S+             → [skip]    (a token that is skipped over, not captured)
     string ReadablePattern(string? pattern)
     {
         if (string.IsNullOrWhiteSpace(pattern)) return "—";
 
-        var readable = pattern
+        // Replace any capturing group (...) with [value] before stripping parens.
+        // Excludes non-capturing groups (?:...) and (?i:...).
+        var readable = System.Text.RegularExpressions.Regex.Replace(
+            pattern, @"\((?!\?)[^)]+\)", "[value]");
+
+        readable = readable
             .Replace(@"\s+", " ")
             .Replace(@"\s*", " ")
-            .Replace(@"\S+", "[value]")
-            .Replace(@"\S*", "[value]")
+            .Replace(@"\S+", "[skip]")   // bare (uncaptured) \S+ = skip token
+            .Replace(@"\S*", "[skip]")
             .Replace(@"\d+", "[number]")
             .Replace(@"\d*", "[number]")
             .Replace(@"\.", ".")

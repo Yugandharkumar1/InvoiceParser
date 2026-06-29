@@ -166,13 +166,13 @@
                     <strong>"Extract a specific value"</strong> instead.
                 </div>
 
-                <!-- Date-in-prefix warning -->
-                <div id="wizDatePrefixWarning" class="alert alert-warning py-2 px-3 small mt-2" style="display:none;">
-                    <strong>⚠ Unstable prefix:</strong> The text before your value contains a
-                    <strong>date or billing period</strong> that changes each invoice — the rule may fail next month.<br/>
-                    <span class="mt-1 d-block">
-                        <strong>Tip:</strong> Click a word closer to the value in the token picker above, or
-                        use <strong>↻ Re-detect</strong> to choose a different match strategy.
+                <!-- Date-in-prefix warning (now informational — date is auto-generalized) -->
+                <div id="wizDatePrefixWarning" class="alert alert-info py-2 px-3 small mt-2" style="display:none;">
+                    <strong>✓ Date automatically generalized:</strong> The text before your value contained a
+                    <strong>date or billing period</strong> — it has been replaced with <code>[skip]</code>
+                    in the pattern so the rule keeps working on every future invoice.<br/>
+                    <span class="mt-1 d-block text-muted">
+                        If you want the date to stay exact, open <strong>⚙ Advanced</strong> and edit the raw pattern.
                     </span>
                 </div>
 
@@ -1003,6 +1003,14 @@ function buildPattern() {
             var escaped = escapeRegex(prefix)
                 .replace(/\\ /g, '\\s+')
                 .replace(/\\\$/g, '\\$?');
+            // Generalize date/number tokens in the prefix so the rule
+            // is not tied to this specific invoice month.  A date changes
+            // every billing cycle and would cause the rule to stop matching;
+            // replacing it with \S+ skips whatever token sits in that position.
+            escaped = escaped
+                .replace(/\d{1,2}\/\d{1,2}\/\d{2,4}/g, '\\S+')   // MM/DD/YYYY or MM/DD/YY
+                .replace(/\d{4}-\d{2}-\d{2}/g, '\\S+')              // YYYY-MM-DD
+                .replace(/\d{1,2}-\d{1,2}-\d{2,4}/g, '\\S+');       // MM-DD-YYYY
             pattern = escaped + '\\s+\\$?\\s*' + capGroup(ft, val);
         } else {
             pattern = escapeRegex(line);

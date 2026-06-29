@@ -79,6 +79,14 @@
         border-radius: 0 4px 4px 0;
         font-size: .85rem;
     }
+    /* Invoice line picker (Edit page) */
+    .edit-line-pick {
+        padding: 5px 10px; cursor: pointer; font-size: .8rem;
+        font-family: monospace; border-bottom: 1px solid #eee;
+        transition: background .1s;
+    }
+    .edit-line-pick:hover   { background: #e7f1ff; }
+    .edit-line-pick.selected { background: #0d6efd; color: #fff; }
 </style>
 
 <div class="row justify-content-center">
@@ -278,12 +286,63 @@ RECURRING CHARGE  $0.00  ← trigger line (this line)</pre>
                                    placeholder="Text that comes AFTER (optional)" />
                         </div>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="buildPatternBtn">
-                        Generate Pattern
-                    </button>
+                    <div class="d-flex gap-2 mt-2 flex-wrap align-items-center">
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="buildPatternBtn">
+                            Generate Pattern
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="buildPatternSkipBtn"
+                                title="Same as Generate Pattern, but skips one variable word (e.g. a date) between the prefix and the captured value">
+                            Generate with [skip]
+                        </button>
+                        <span class="text-muted small">
+                            Use <strong>[skip]</strong> when a word like a date sits between the label and the value
+                            (e.g. <code>TOTAL DUE BY 04/16/26 -$47.29</code>)
+                        </span>
+                    </div>
                     <div id="generatedPatternPreview" class="mt-2" style="display:none;">
                         <span class="text-muted small">Generated pattern: </span>
                         <code id="generatedPatternCode" class="small"></code>
+                    </div>
+                </div>
+
+                <!-- ── Invoice line / token picker ────────────────────────── -->
+                <div class="mt-3">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="editPickerToggle">
+                        📄 Pick from invoice
+                    </button>
+                    <span class="text-muted small ms-2">
+                        Click a line, then click the word(s) to match or capture — works for all rule types.
+                    </span>
+                </div>
+                <div id="editPickerPanel" class="mt-2 p-2 border rounded" style="display:none;background:#f8f9fa;">
+                    <div id="editPickerLoading" class="text-muted small py-2 ps-1">⏳ Loading invoice lines…</div>
+                    <div id="editPickerEmpty" class="alert alert-info py-2 mb-0 small" style="display:none;">
+                        No invoice has been uploaded for this carrier yet.
+                        Upload one via the <a asp-action="Wizard" asp-route-carrierId="@carrierId">Add Rule Wizard</a>
+                        or the main Invoice Upload page to enable the line picker.
+                    </div>
+                    <div id="editPickerList" style="display:none;">
+                        <div class="input-group input-group-sm mb-2" style="max-width:320px;">
+                            <span class="input-group-text bg-white border-end-0">🔍</span>
+                            <input type="text" id="editLineSearch" class="form-control border-start-0 ps-0"
+                                   placeholder="Filter lines…" autocomplete="off" />
+                        </div>
+                        <div id="editPdfLinesList" class="border rounded"
+                             style="max-height:240px;overflow-y:auto;background:#fff;"></div>
+                    </div>
+                    <div id="editTokenSection" class="mt-2 pt-2 border-top" style="display:none;">
+                        <div class="small fw-semibold mb-1" id="editTokenTitle">
+                            Click the word that is the <span class="text-primary">value</span> you want to capture:
+                        </div>
+                        <div id="editLineTokens" class="border rounded px-2 py-2 bg-white font-monospace"
+                             style="font-size:0.82rem;line-height:2.2;word-break:break-all;"></div>
+                        <div class="form-text mt-1" id="editTokenHint">
+                            <strong>Click once</strong> to select a word.
+                            <strong>Click a second word</strong> to extend the selection.
+                        </div>
+                        <div id="editPatternPreview" class="alert alert-info py-1 px-2 small mt-2" style="display:none;">
+                            <strong>Pattern set to:</strong> <code id="editPatternPreviewCode"></code>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -563,14 +622,34 @@ RECURRING CHARGE  $0.00  ← trigger line (this line)</pre>
     updateConditionUI();
 
     // ── Regex pattern builder ─────────────────────────────────────────────────
+    function escPat(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
     document.getElementById('buildPatternBtn').addEventListener('click', function () {
         var pre  = document.getElementById('patternPrefixInput').value.trim();
         var suf  = document.getElementById('patternSuffixInput').value.trim();
-        var esc  = function (s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
         var pat  = '';
-        if (pre) pat += esc(pre) + '\\s*';
+        if (pre) pat += escPat(pre) + '\\s*';
         pat += '([\\d.,\\s\\w/-]+?)';
-        if (suf) pat += '\\s*' + esc(suf);
+        if (suf) pat += '\\s*' + escPat(suf);
+
+        patInput.value = pat;
+        document.getElementById('generatedPatternCode').textContent = pat;
+        document.getElementById('generatedPatternPreview').style.display = '';
+        syncConditionHiddens();
+        updatePreview();
+    });
+
+    // "Generate with [skip]" — like Generate Pattern but inserts \S+\s+ between
+    // the prefix and the capture group to skip one variable token (e.g. a date).
+    document.getElementById('buildPatternSkipBtn').addEventListener('click', function () {
+        var pre  = document.getElementById('patternPrefixInput').value.trim();
+        var suf  = document.getElementById('patternSuffixInput').value.trim();
+        var pat  = '';
+        if (pre) pat += escPat(pre) + '\\s+';
+        pat += '\\S+\\s+';           // [skip] — skips one word (date, ID, etc.)
+        pat += '\\$?\\s*';           // optional leading $ for currency
+        pat += '([\\-\\d,]+\\.\\d{2})';  // [value] — captures amount
+        if (suf) pat += '\\s*' + escPat(suf);
 
         patInput.value = pat;
         document.getElementById('generatedPatternCode').textContent = pat;
@@ -783,6 +862,225 @@ RECURRING CHARGE  $0.00  ← trigger line (this line)</pre>
             btn.textContent = '▶ Test Rule';
         });
     });
+
+    // ── Invoice line / token picker ───────────────────────────────────────────
+    (function () {
+        var editLines       = [];
+        var editLinesLoaded = false;
+        var editPendingStart = -1;
+
+        var toggleBtn      = document.getElementById('editPickerToggle');
+        var panel          = document.getElementById('editPickerPanel');
+        var loadingEl      = document.getElementById('editPickerLoading');
+        var emptyEl        = document.getElementById('editPickerEmpty');
+        var listWrap       = document.getElementById('editPickerList');
+        var linesList      = document.getElementById('editPdfLinesList');
+        var tokenSec       = document.getElementById('editTokenSection');
+        var tokenTitle     = document.getElementById('editTokenTitle');
+        var tokenHint      = document.getElementById('editTokenHint');
+        var tokenCont      = document.getElementById('editLineTokens');
+        var previewDiv     = document.getElementById('editPatternPreview');
+        var previewCode    = document.getElementById('editPatternPreviewCode');
+
+        // Toggle open / close
+        toggleBtn.addEventListener('click', function () {
+            var open = panel.style.display !== 'none';
+            panel.style.display = open ? 'none' : '';
+            toggleBtn.textContent = open ? '📄 Pick from invoice' : '📄 Hide invoice picker';
+            if (!open && !editLinesLoaded) loadLines();
+        });
+
+        function loadLines() {
+            loadingEl.style.display = '';
+            emptyEl.style.display   = 'none';
+            listWrap.style.display  = 'none';
+
+            fetch('/CarrierRules/PdfLines/' + carrierId)
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                loadingEl.style.display = 'none';
+                editLinesLoaded = true;
+                editLines = data.lines || [];
+                if (editLines.length === 0) { emptyEl.style.display = ''; return; }
+                renderLines();
+                listWrap.style.display = '';
+            })
+            .catch(function () {
+                loadingEl.style.display = 'none';
+                emptyEl.style.display   = '';
+            });
+        }
+
+        function renderLines() {
+            linesList.innerHTML = '';
+            editLines.forEach(function (line, idx) {
+                var div = document.createElement('div');
+                div.className = 'edit-line-pick';
+                div.setAttribute('data-text', line.toLowerCase());
+                div.textContent = line;
+                div.addEventListener('click', function () {
+                    linesList.querySelectorAll('.edit-line-pick').forEach(function (el) { el.classList.remove('selected'); });
+                    div.classList.add('selected');
+                    editPendingStart = -1;
+                    renderTokenPicker(line);
+                });
+                linesList.appendChild(div);
+            });
+
+            document.getElementById('editLineSearch').addEventListener('input', function () {
+                var term = this.value.trim().toLowerCase();
+                linesList.querySelectorAll('.edit-line-pick').forEach(function (el) {
+                    el.style.display = (term && !el.getAttribute('data-text').includes(term)) ? 'none' : '';
+                });
+            });
+        }
+
+        function renderTokenPicker(line) {
+            var ct = ctSelect.value;
+            var ft = document.getElementById('FieldType').value || 'string';
+            var isRegex = (ct === 'regex_match');
+
+            if (isRegex) {
+                tokenTitle.innerHTML = 'Click the word that is the <span class="text-primary fw-bold">value</span> to capture:';
+            } else {
+                tokenTitle.innerHTML = 'Click the word(s) that <span class="text-warning fw-bold">identify</span> this line — fills the match pattern:';
+            }
+            tokenHint.innerHTML = '<strong>Click once</strong> to select a word. <strong>Click a second word</strong> to extend.';
+
+            tokenCont.innerHTML = '';
+            previewDiv.style.display = 'none';
+            editPendingStart = -1;
+
+            var tokens = line.trim().split(/\s+/);
+            if (tokens.length === 0) { tokenSec.style.display = 'none'; return; }
+
+            tokens.forEach(function (tok, idx) {
+                var span = document.createElement('span');
+                span.textContent = tok;
+                span.className   = 'badge border me-1 mb-1';
+                span.style.cssText = 'cursor:pointer;font-size:0.82rem;font-weight:400;background:#fff;color:#333;transition:background .1s;';
+
+                span.addEventListener('mouseenter', function () {
+                    if (span.dataset.selected) return;
+                    if (editPendingStart !== -1 && idx !== editPendingStart) {
+                        var f = Math.min(editPendingStart, idx), t2 = Math.max(editPendingStart, idx);
+                        tokenCont.querySelectorAll('span').forEach(function (s, si) {
+                            if (si >= f && si <= t2) s.style.background = '#cfe2ff';
+                        });
+                    } else { span.style.background = '#e7f0ff'; }
+                });
+                span.addEventListener('mouseleave', function () {
+                    tokenCont.querySelectorAll('span').forEach(function (s) {
+                        if (!s.dataset.selected) s.style.background = '#fff';
+                    });
+                    tokenCont.querySelectorAll('span[data-selected]').forEach(function (s) {
+                        s.style.background = '#0d6efd'; s.style.color = '#fff';
+                    });
+                    if (editPendingStart !== -1) {
+                        var ps = tokenCont.querySelectorAll('span')[editPendingStart];
+                        if (ps) { ps.style.background = '#0d6efd'; ps.style.color = '#fff'; }
+                    }
+                });
+
+                span.addEventListener('click', function () {
+                    if (editPendingStart === -1) {
+                        // First click — set range start
+                        editPendingStart = idx;
+                        tokenCont.querySelectorAll('span').forEach(function (s) {
+                            delete s.dataset.selected;
+                            s.style.background = '#fff'; s.style.color = '#333'; s.style.fontWeight = '400';
+                        });
+                        span.dataset.selected = '1';
+                        span.style.background = '#0d6efd'; span.style.color = '#fff'; span.style.fontWeight = '600';
+                        tokenHint.innerHTML = '<strong class="text-success">✓ "' + escHtml(tok) + '" selected.</strong> Click another word to extend, or proceed.';
+                        applyPickerSelection(tokens, idx, idx);
+
+                    } else if (editPendingStart === idx) {
+                        // Deselect
+                        editPendingStart = -1;
+                        tokenCont.querySelectorAll('span').forEach(function (s) {
+                            delete s.dataset.selected; s.style.background = '#fff'; s.style.color = '#333'; s.style.fontWeight = '400';
+                        });
+                        tokenHint.innerHTML = '<strong>Click once</strong> to select a word. <strong>Click a second word</strong> to extend.';
+                        previewDiv.style.display = 'none';
+
+                    } else {
+                        // Second click — extend range
+                        var from2 = Math.min(editPendingStart, idx), to2 = Math.max(editPendingStart, idx);
+                        editPendingStart = -1;
+                        tokenCont.querySelectorAll('span').forEach(function (s, si) {
+                            delete s.dataset.selected;
+                            if (si >= from2 && si <= to2) {
+                                s.dataset.selected = '1';
+                                s.style.background = '#0d6efd'; s.style.color = '#fff'; s.style.fontWeight = '600';
+                            } else {
+                                s.style.background = '#fff'; s.style.color = '#333'; s.style.fontWeight = '400';
+                            }
+                        });
+                        var selTxt = tokens.slice(from2, to2 + 1).join(' ');
+                        tokenHint.innerHTML = '<strong class="text-success">✓ "' + escHtml(selTxt) + '" selected.</strong> Click any word to restart.';
+                        applyPickerSelection(tokens, from2, to2);
+                    }
+                });
+
+                tokenCont.appendChild(span);
+            });
+
+            tokenSec.style.display = '';
+        }
+
+        function applyPickerSelection(tokens, from3, to3) {
+            var ct = ctSelect.value;
+            var ft = document.getElementById('FieldType').value || 'string';
+            var sel = tokens.slice(from3, to3 + 1).join(' ');
+            var pat = '';
+
+            if (ct === 'regex_match') {
+                // Build a proper capture-group pattern
+                var prefix = tokens.slice(0, from3).join(' ').trimEnd();
+                var esc2   = escPat(prefix)
+                    .replace(/\\ /g, '\\s+')
+                    .replace(/\\\$/g, '\\$?');
+                // Generalize date tokens in the prefix (same logic as Wizard)
+                esc2 = esc2
+                    .replace(/\d{1,2}\/\d{1,2}\/\d{2,4}/g, '\\S+')
+                    .replace(/\d{4}-\d{2}-\d{2}/g, '\\S+')
+                    .replace(/\d{1,2}-\d{1,2}-\d{2,4}/g, '\\S+');
+                var capGrp = pickerCapGroup(ft, sel);
+                pat = prefix ? (esc2 + '\\s+\\$?\\s*' + capGrp) : capGrp;
+
+            } else if (ct === 'starts_with') {
+                pat = tokens.slice(0, to3 + 1).join(' ');
+            } else if (ct === 'ends_with') {
+                pat = tokens.slice(from3).join(' ');
+            } else if (ct === 'equals') {
+                pat = tokens.join(' ');
+            } else {
+                // contains, does_not_contain, not_equals, greater_than, less_than
+                pat = sel;
+            }
+
+            patInput.value = pat;
+            syncConditionHiddens();
+            updatePreview();
+
+            previewCode.textContent = pat;
+            previewDiv.style.display = '';
+        }
+
+        function pickerCapGroup(ft, val) {
+            if (ft === 'date')    return '([\\d/\\-]+)';
+            if (ft === 'decimal') return '([\\-\\d,]+\\.\\d{2})';
+            if (val && val.indexOf(' ') >= 0) return '([^\\r\\n]+?)';
+            return '(\\S+)';
+        }
+
+        // Re-render token picker when condition type changes (title/behavior changes)
+        ctSelect.addEventListener('change', function () {
+            var selLine = linesList.querySelector('.edit-line-pick.selected');
+            if (selLine) renderTokenPicker(selLine.textContent);
+        });
+    })();
 
     // Initial preview
     updatePreview();

@@ -106,10 +106,19 @@ public static class ChargeExtractor
         var lineBeforePriceRules = chargeRules?
             .Where(r => r.IsActive && r.TargetTable == "t_charge" && r.FieldType == "line_before_price")
             .ToList();
+        // Charge-description cleanup rules: applied as a post-processing pass to EVERY captured
+        // description that matches the condition, regardless of how it was extracted.
+        // Use these to strip dates, account numbers, or any repeating noise from descriptions.
+        var chargeDescCleanupRules = chargeRules?
+            .Where(r => r.IsActive && r.TargetTable == "t_charge" &&
+                        r.FieldName == "charge_desc" &&
+                        !string.IsNullOrWhiteSpace(r.TransformationsJson))
+            .ToList();
 
-        bool hasAnchorRules        = (lineAnchorRules?.Count > 0) || (locationAnchorRules?.Count > 0);
-        bool hasTableRowRules      = tableRowRules?.Count > 0;
+        bool hasAnchorRules          = (lineAnchorRules?.Count > 0) || (locationAnchorRules?.Count > 0);
+        bool hasTableRowRules        = tableRowRules?.Count > 0;
         bool hasLineBeforePriceRules = lineBeforePriceRules?.Count > 0;
+        bool hasDescCleanupRules     = chargeDescCleanupRules?.Count > 0;
 
         string? currentSection  = null;
         string? currentLine     = null;
@@ -217,8 +226,7 @@ public static class ChargeExtractor
                 if (line.StartsWith(header, StringComparison.OrdinalIgnoreCase))
                 {
                     isSectionHeader = true;
-                    if (!ChargeLine.IsMatch(line))
-                        currentSection = header;
+                    currentSection = header; // Always open the section; the header line is excluded from charge extraction below
                     break;
                 }
             }
@@ -353,7 +361,13 @@ public static class ChargeExtractor
 
             // ── Standard single-line charge extraction ────────────────────────
             var match = ChargeLine.Match(line);
-            if (!match.Success) continue;
+            if (!match.Success)
+            {
+                // Word-wrapped charges: description on one or more lines, amount on a separate line beneath.
+                match = TryForwardJoin(lines, lineIdx, line, out var forwardConsumed);
+                if (!match.Success) continue;
+                lineIdx += forwardConsumed;
+            }
 
             var desc = match.Groups[1].Value.Trim();
 
@@ -398,7 +412,71 @@ public static class ChargeExtractor
             charges.Add(charge);
         }
 
+        // ── Post-processing: apply charge_desc cleanup rules to every description ──
+        // These rules run after all charges are collected so they cover descriptions
+        // produced by standard extraction, table_row, AND line_before_price paths.
+        if (hasDescCleanupRules && charges.Count > 0)
+        {
+            foreach (var charge in charges)
+            {
+                if (string.IsNullOrWhiteSpace(charge.ChargeDescription)) continue;
+
+                foreach (var rule in chargeDescCleanupRules!)
+                {
+                    // Condition check: if a pattern is set, only apply to matching descriptions.
+                    // If no pattern is set (or condition is "always"), apply to every description.
+                    bool conditionMet = string.IsNullOrWhiteSpace(rule.RegexPattern)
+                        || ConditionEvaluator.Evaluate(charge.ChargeDescription, rule.ConditionType, rule.RegexPattern);
+
+                    if (!conditionMet) continue;
+
+                    var steps = TransformPipeline.Deserialize(rule.TransformationsJson);
+                    if (steps == null) continue;
+
+                    var cleaned = TransformPipeline.Apply(charge.ChargeDescription, steps, pdfText,
+                        matchedLine: charge.ChargeDescription);
+
+                    if (!string.IsNullOrWhiteSpace(cleaned))
+                        charge.ChargeDescription = cleaned;
+                }
+            }
+        }
+
         DeduplicateCharges(charges);
+    }
+
+    /// <summary>
+    /// Attempts to form a valid charge line by joining <paramref name="currentLine"/> with up to
+    /// <c>maxLookahead</c> subsequent non-empty lines. Handles word-wrapped PDF layouts where a
+    /// charge description overflows onto the next line and/or the amount appears on its own line.
+    /// Returns a successful <see cref="Match"/> and the number of additional lines consumed,
+    /// or <see cref="Match.Empty"/> if no valid charge can be assembled within the lookahead window.
+    /// </summary>
+    private static Match TryForwardJoin(string[] lines, int startIdx, string currentLine,
+        out int linesConsumed, int maxLookahead = 3)
+    {
+        linesConsumed = 0;
+        var accumulated = currentLine.TrimEnd();
+
+        for (int i = startIdx + 1; i < lines.Length && (i - startIdx) <= maxLookahead; i++)
+        {
+            var next = lines[i].Trim();
+            if (string.IsNullOrWhiteSpace(next)) continue;
+
+            // Do not cross section boundaries or skip-list lines
+            if (SectionHeaders.Any(h => next.StartsWith(h, StringComparison.OrdinalIgnoreCase))) break;
+            if (SkipLinePrefixes.Any(sp => next.StartsWith(sp, StringComparison.OrdinalIgnoreCase))) break;
+
+            accumulated += " " + next;
+            var m = ChargeLine.Match(accumulated);
+            if (m.Success)
+            {
+                linesConsumed = i - startIdx;
+                return m;
+            }
+        }
+
+        return Match.Empty;
     }
 
     private static bool IsNoiseDescription(string desc)

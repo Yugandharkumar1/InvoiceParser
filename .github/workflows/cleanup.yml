@@ -1,0 +1,13 @@
+
+name: cleanup caches by a branch
+
+on:
+  pull_request:
+    types:
+      - closed
+
+jobs:
+  cleanup-cache:
+    name: Cleanup GitHub Action cache
+    uses: AppDirect/actions/.github/workflows/cleanup.yml@master
+    secrets: inherit

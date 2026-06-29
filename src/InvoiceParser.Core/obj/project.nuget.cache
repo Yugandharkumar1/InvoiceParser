@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "aZ6jAd0rFPDCh3bXrC3h+ZZL+mhJmD8qjcM3sp8frEimfPE9hvdGra8bpugMKovRjfkBsGtAGuoQslNOr/r9Vg==",
+  "dgSpecHash": "N2l4eiLeTyPWeM8k4c0YmCgyG4pxMsR1YwryQUiYPcJiIDHF2SczpneGFbzFNDlik+FcEtCaAjIEet06C5f6sw==",
   "success": true,
-  "projectFilePath": "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Core\\InvoiceParser.Core.csproj",
+  "projectFilePath": "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Core\\InvoiceParser.Core.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\ADMIN\\.nuget\\packages\\docnet.core\\2.6.0\\docnet.core.2.6.0.nupkg.sha512",
     "C:\\Users\\ADMIN\\.nuget\\packages\\microsoft.extensions.dependencyinjection.abstractions\\7.0.0\\microsoft.extensions.dependencyinjection.abstractions.7.0.0.nupkg.sha512",
