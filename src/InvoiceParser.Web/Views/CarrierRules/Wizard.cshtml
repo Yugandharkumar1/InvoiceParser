@@ -74,13 +74,17 @@
         </div>
         <div class="card-body">
 
+            <!-- Shown only when NO stored invoice exists for this carrier -->
             <div id="noPdfTextMsg" style="display:none;">
                 <div class="alert alert-info mb-3">
                     <strong>No invoice stored for this carrier yet.</strong>
                     Upload a sample invoice PDF below — it will be used just for this session to help you define rules.
                     The file won't be saved or processed permanently.
                 </div>
+            </div>
 
+            <!-- Upload panel: visible when no stored invoice, or when user clicks "Use a different invoice" -->
+            <div id="pdfUploadPanel" style="display:none;" class="mb-3">
                 <!-- Drop zone -->
                 <div id="pdfDropZone"
                      class="border rounded d-flex flex-column align-items-center justify-content-center text-center p-5"
@@ -94,7 +98,6 @@
                         Browse file…
                     </button>
                 </div>
-
                 <div id="uploadProgress" class="mt-3" style="display:none;">
                     <div class="d-flex align-items-center gap-2">
                         <div class="spinner-border spinner-border-sm text-primary"></div>
@@ -105,6 +108,26 @@
             </div>
 
             <div id="pdfLinesSection">
+                @{
+                    string? _storedAccount = ViewBag.StoredInvoiceAccount as string;
+                    string? _storedDate    = ViewBag.StoredInvoiceDate    as string;
+                    string? _storedNumber  = ViewBag.StoredInvoiceNumber  as string;
+                    bool _hasStoredMeta    = !string.IsNullOrWhiteSpace(_storedAccount)
+                                         || !string.IsNullOrWhiteSpace(_storedDate)
+                                         || !string.IsNullOrWhiteSpace(_storedNumber);
+                }
+                @if (_hasStoredMeta)
+                {
+                    <div id="storedInvoiceWarningBanner" class="alert alert-warning py-2 px-3 small mb-2">
+                        <strong>⚠ These lines are from a previously stored invoice</strong>
+                        @if (!string.IsNullOrWhiteSpace(_storedAccount)) { <span class="ms-1">— account: <strong>@_storedAccount</strong></span> }
+                        @if (!string.IsNullOrWhiteSpace(_storedDate))    { <span class="ms-1">— date: <strong>@_storedDate</strong></span>    }
+                        @if (!string.IsNullOrWhiteSpace(_storedNumber))  { <span class="ms-1">— invoice #: <strong>@_storedNumber</strong></span> }
+                        <br/>
+                        <span class="text-muted">They may not match the invoice you're currently creating rules for.</span>
+                        <a href="#" id="useDifferentInvoiceLink" class="ms-2 fw-semibold">📄 Use a different invoice →</a>
+                    </div>
+                }
                 <p class="text-muted small mb-2">
                     Click the line that contains the <strong id="step2FieldLabel"></strong>.
                     The line is from the most recent invoice uploaded for <strong>@carrierName</strong>.
@@ -476,90 +499,9 @@ function renderStep2() {
     var listEl = document.getElementById('pdfLinesList');
 
     if (PDF_LINES.length === 0) {
-        document.getElementById('noPdfTextMsg').style.display = '';
+        document.getElementById('noPdfTextMsg').style.display    = '';
+        document.getElementById('pdfUploadPanel').style.display  = '';
         document.getElementById('pdfLinesSection').style.display = 'none';
-
-        // ── File upload wiring ───────────────────────────────────────────
-        var dropZone   = document.getElementById('pdfDropZone');
-        var fileInput  = document.getElementById('pdfFileInput');
-        var browseBtn  = document.getElementById('browseFileBtn');
-        var progressEl = document.getElementById('uploadProgress');
-        var progressMsg= document.getElementById('uploadProgressMsg');
-        var errorEl    = document.getElementById('uploadError');
-
-        browseBtn.addEventListener('click', function () { fileInput.click(); });
-        dropZone.addEventListener('click', function (e) {
-            if (e.target !== browseBtn) fileInput.click();
-        });
-
-        // Drag visual feedback
-        ['dragenter','dragover'].forEach(function (ev) {
-            dropZone.addEventListener(ev, function (e) {
-                e.preventDefault(); e.stopPropagation();
-                dropZone.style.background = '#e7f1ff';
-                dropZone.style.borderColor = '#0d6efd';
-            });
-        });
-        ['dragleave','drop'].forEach(function (ev) {
-            dropZone.addEventListener(ev, function (e) {
-                e.preventDefault(); e.stopPropagation();
-                dropZone.style.background = '#f8f9fa';
-                dropZone.style.borderColor = '#6c757d';
-            });
-        });
-        dropZone.addEventListener('drop', function (e) {
-            var files = e.dataTransfer.files;
-            if (files.length > 0) uploadFile(files[0]);
-        });
-        fileInput.addEventListener('change', function () {
-            if (this.files.length > 0) uploadFile(this.files[0]);
-        });
-
-        function uploadFile(file) {
-            errorEl.style.display = 'none';
-            progressEl.style.display = '';
-            progressMsg.textContent = 'Extracting text from "' + file.name + '"…';
-            browseBtn.disabled = true;
-
-            var formData = new FormData();
-            formData.append('file', file);
-
-            fetch('/CarrierRules/ExtractLines', { method: 'POST', body: formData })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                progressEl.style.display = 'none';
-                browseBtn.disabled = false;
-
-                if (data.error) {
-                    errorEl.textContent = '⚠ ' + data.error;
-                    errorEl.style.display = '';
-                    return;
-                }
-                if (!data.lines || data.lines.length === 0) {
-                    errorEl.textContent = '⚠ ' + (data.warning || 'No text lines were extracted from this file.');
-                    errorEl.style.display = '';
-                    return;
-                }
-                if (data.warning) {
-                    errorEl.className = 'alert alert-warning mt-3';
-                    errorEl.textContent = '⚠ ' + data.warning;
-                    errorEl.style.display = '';
-                }
-
-                // Load the lines into PDF_LINES and show the list
-                data.lines.forEach(function (l) { PDF_LINES.push(l); });
-                document.getElementById('noPdfTextMsg').style.display = 'none';
-                document.getElementById('pdfLinesSection').style.display = '';
-                renderStep2();
-            })
-            .catch(function (err) {
-                progressEl.style.display = 'none';
-                browseBtn.disabled = false;
-                errorEl.textContent = '⚠ Upload failed: ' + String(err);
-                errorEl.style.display = '';
-            });
-        }
-
         return;
     }
 
@@ -1855,6 +1797,106 @@ function esc(s) {
 function escapeRegex(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+
+// ── Upload wiring (runs once — works for both "no stored invoice" and "use different invoice") ──
+(function initUploadWiring() {
+    var dropZone    = document.getElementById('pdfDropZone');
+    var fileInput   = document.getElementById('pdfFileInput');
+    var browseBtn   = document.getElementById('browseFileBtn');
+    var progressEl  = document.getElementById('uploadProgress');
+    var progressMsg = document.getElementById('uploadProgressMsg');
+    var errorEl     = document.getElementById('uploadError');
+    var uploadPanel = document.getElementById('pdfUploadPanel');
+
+    browseBtn.addEventListener('click', function () { fileInput.click(); });
+    dropZone.addEventListener('click', function (e) {
+        if (e.target !== browseBtn) fileInput.click();
+    });
+
+    ['dragenter','dragover'].forEach(function (ev) {
+        dropZone.addEventListener(ev, function (e) {
+            e.preventDefault(); e.stopPropagation();
+            dropZone.style.background = '#e7f1ff';
+            dropZone.style.borderColor = '#0d6efd';
+        });
+    });
+    ['dragleave','drop'].forEach(function (ev) {
+        dropZone.addEventListener(ev, function (e) {
+            e.preventDefault(); e.stopPropagation();
+            dropZone.style.background = '#f8f9fa';
+            dropZone.style.borderColor = '#6c757d';
+        });
+    });
+    dropZone.addEventListener('drop', function (e) {
+        if (e.dataTransfer.files.length > 0) uploadFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', function () {
+        if (this.files.length > 0) uploadFile(this.files[0]);
+    });
+
+    function uploadFile(file) {
+        errorEl.style.display = 'none';
+        progressEl.style.display = '';
+        progressMsg.textContent = 'Extracting text from "' + file.name + '"…';
+        browseBtn.disabled = true;
+
+        var formData = new FormData();
+        formData.append('file', file);
+
+        fetch('/CarrierRules/ExtractLines', { method: 'POST', body: formData })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            progressEl.style.display = 'none';
+            browseBtn.disabled = false;
+
+            if (data.error) {
+                errorEl.textContent = '⚠ ' + data.error;
+                errorEl.style.display = '';
+                return;
+            }
+            if (!data.lines || data.lines.length === 0) {
+                errorEl.textContent = '⚠ ' + (data.warning || 'No text lines were extracted from this file.');
+                errorEl.style.display = '';
+                return;
+            }
+            if (data.warning) {
+                errorEl.className = 'alert alert-warning mt-3';
+                errorEl.textContent = '⚠ ' + data.warning;
+                errorEl.style.display = '';
+            }
+
+            // REPLACE the existing lines (not append) so the user sees only their invoice
+            PDF_LINES.length = 0;
+            data.lines.forEach(function (l) { PDF_LINES.push(l); });
+
+            // Hide the "stored invoice" warning — the user is now working with their own file
+            var warn = document.getElementById('storedInvoiceWarningBanner');
+            if (warn) warn.style.display = 'none';
+
+            document.getElementById('noPdfTextMsg').style.display   = 'none';
+            uploadPanel.style.display                               = 'none';
+            document.getElementById('pdfLinesSection').style.display = '';
+            renderStep2();
+        })
+        .catch(function (err) {
+            progressEl.style.display = 'none';
+            browseBtn.disabled = false;
+            errorEl.textContent = '⚠ Upload failed: ' + String(err);
+            errorEl.style.display = '';
+        });
+    }
+
+    // "Use a different invoice" link in the stored-invoice warning banner
+    var diffLink = document.getElementById('useDifferentInvoiceLink');
+    if (diffLink) {
+        diffLink.addEventListener('click', function (e) {
+            e.preventDefault();
+            uploadPanel.style.display = '';
+            uploadPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            errorEl.style.display = 'none';
+        });
+    }
+})();
 
 // Init
 goTo(1);

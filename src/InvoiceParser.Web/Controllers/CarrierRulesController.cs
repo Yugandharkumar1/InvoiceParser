@@ -180,12 +180,19 @@ public class CarrierRulesController : Controller
         var carrier = await _repo.GetCarrierByIdAsync(carrierId);
         if (carrier == null) return NotFound();
 
-        var pdfText = await _repo.GetLatestPdfTextForCarrierAsync(carrierId);
+        var storedInvoice = await _repo.GetLatestInvoiceForCarrierAsync(carrierId);
+        var pdfText = storedInvoice?.PdfText;
         var lines = pdfText?
             .Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
             .Select(l => l.Trim())
             .Where(l => l.Length > 1)
             .ToList() ?? new List<string>();
+
+        // Metadata about the stored invoice so the wizard can warn the user
+        // that the displayed lines may belong to a different account/invoice.
+        ViewBag.StoredInvoiceAccount = storedInvoice?.CarrierAccount;
+        ViewBag.StoredInvoiceDate    = storedInvoice?.InvoiceDate?.ToString("MMM d, yyyy");
+        ViewBag.StoredInvoiceNumber  = storedInvoice?.InvoiceNumber;
 
         var sectionLabel = section switch
         {

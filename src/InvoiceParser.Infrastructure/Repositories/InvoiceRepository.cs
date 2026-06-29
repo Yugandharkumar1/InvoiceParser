@@ -95,6 +95,13 @@ public class InvoiceRepository : IInvoiceRepository
             .Select(i => i.PdfText)
             .FirstOrDefaultAsync();
 
+    public async Task<Invoice?> GetLatestInvoiceForCarrierAsync(int carrierId)
+        => await _db.Invoices
+            .Where(i => i.CarrierId == carrierId && i.PdfText != null && i.PdfText != "")
+            .OrderByDescending(i => i.InvoiceDate)
+            .ThenByDescending(i => i.Id)
+            .FirstOrDefaultAsync();
+
     public async Task<Invoice> SaveInvoiceAsync(Invoice invoice)
     {
         _db.Invoices.Add(invoice);

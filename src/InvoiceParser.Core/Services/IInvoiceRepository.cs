@@ -16,6 +16,8 @@ public interface IInvoiceRepository
     Task UpdateRuleAsync(VendorParsingRule rule);
     Task DeleteRuleAsync(int id);
     Task<string?> GetLatestPdfTextForCarrierAsync(int carrierId);
+    /// <summary>Returns the invoice metadata (account, date, number) for the most recently stored invoice for a carrier — without loading charges.</summary>
+    Task<Invoice?> GetLatestInvoiceForCarrierAsync(int carrierId);
     Task<Invoice> SaveInvoiceAsync(Invoice invoice);
     Task<Invoice?> GetInvoiceByIdAsync(int id);
     Task<List<Invoice>> GetAllInvoicesAsync();
