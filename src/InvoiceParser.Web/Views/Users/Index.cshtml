@@ -1,0 +1,169 @@
+@model InvoiceParser.Web.Models.Users.UserListViewModel
+@{
+    ViewData["Title"] = "Users";
+
+    string PageUrl(int p) =>
+        Url.Action("Index", "Users", new { page = p, search = Model.Search, role = Model.RoleFilter })!;
+
+    int windowStart = Math.Max(1, Model.Page - 2);
+    int windowEnd   = Math.Min(Model.TotalPages, Model.Page + 2);
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h2 class="mb-0">Users</h2>
+        <p class="text-muted small mb-0">
+            @Model.TotalCount active user@(Model.TotalCount == 1 ? "" : "s") with login access &mdash;
+            managed in iPath.
+        </p>
+    </div>
+</div>
+
+@* Search & filter bar *@
+<form method="get" asp-action="Index" asp-controller="Users" class="row g-2 mb-3">
+    <div class="col-12 col-md-5">
+        <div class="input-group">
+            <span class="input-group-text bg-white">🔍</span>
+            <input type="text" name="search" value="@Model.Search"
+                   class="form-control" placeholder="Search name, email…" />
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <select name="role" class="form-select">
+            <option value="">All roles</option>
+            @if (Model.RoleFilter == "admin")
+            {
+                <option value="admin" selected>Admin only</option>
+                <option value="user">User only</option>
+            }
+            else if (Model.RoleFilter == "user")
+            {
+                <option value="admin">Admin only</option>
+                <option value="user" selected>User only</option>
+            }
+            else
+            {
+                <option value="admin">Admin only</option>
+                <option value="user">User only</option>
+            }
+        </select>
+    </div>
+    <div class="col-6 col-md-2">
+        <button type="submit" class="btn btn-primary w-100">Filter</button>
+    </div>
+    @if (!string.IsNullOrEmpty(Model.Search) || Model.RoleFilter != null)
+    {
+        <div class="col-12 col-md-2">
+            <a asp-action="Index" asp-controller="Users" class="btn btn-outline-secondary w-100">Clear</a>
+        </div>
+    }
+</form>
+
+@* Grid *@
+<div class="card shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:2.5rem;">#</th>
+                    <th>Name</th>
+                    <th>Email / Login</th>
+                    <th>Customer ID</th>
+                    <th class="text-center">Role</th>
+                </tr>
+            </thead>
+            <tbody>
+                @{
+                    int rowNum = (Model.Page - 1) * Model.PageSize + 1;
+                }
+                @foreach (var user in Model.Users)
+                {
+                    <tr>
+                        <td class="text-muted small">@(rowNum++)</td>
+                        <td><div class="fw-semibold">@(user.DisplayName ?? "—")</div></td>
+                        <td class="text-muted small">@user.LoginName</td>
+                        <td class="text-muted small">@user.CustomerId</td>
+                        <td class="text-center">
+                            @if (user.IsAdmin)
+                            {
+                                <span class="badge bg-danger">Admin</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">User</span>
+                            }
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Users.Any())
+                {
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-5">
+                            No users found matching your filters.
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @* Footer: record count + pagination *@
+    @if (Model.Users.Any())
+    {
+        <div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2 py-2">
+            <small class="text-muted">
+                Showing @((Model.Page - 1) * Model.PageSize + 1)–@Math.Min(Model.Page * Model.PageSize, Model.TotalCount)
+                of @Model.TotalCount
+            </small>
+
+            @if (Model.TotalPages > 1)
+            {
+                <nav>
+                    <ul class="pagination pagination-sm mb-0">
+
+                        @* Prev *@
+                        <li class="page-item @(!Model.HasPrev ? "disabled" : "")">
+                            <a class="page-link" href="@PageUrl(Model.Page - 1)">&laquo;</a>
+                        </li>
+
+                        @* First page shortcut *@
+                        @if (windowStart > 1)
+                        {
+                            <li class="page-item"><a class="page-link" href="@PageUrl(1)">1</a></li>
+                            @if (windowStart > 2)
+                            {
+                                <li class="page-item disabled"><span class="page-link">…</span></li>
+                            }
+                        }
+
+                        @* Page window *@
+                        @for (int p = windowStart; p <= windowEnd; p++)
+                        {
+                            <li class="page-item @(p == Model.Page ? "active" : "")">
+                                <a class="page-link" href="@PageUrl(p)">@p</a>
+                            </li>
+                        }
+
+                        @* Last page shortcut *@
+                        @if (windowEnd < Model.TotalPages)
+                        {
+                            @if (windowEnd < Model.TotalPages - 1)
+                            {
+                                <li class="page-item disabled"><span class="page-link">…</span></li>
+                            }
+                            <li class="page-item">
+                                <a class="page-link" href="@PageUrl(Model.TotalPages)">@Model.TotalPages</a>
+                            </li>
+                        }
+
+                        @* Next *@
+                        <li class="page-item @(!Model.HasNext ? "disabled" : "")">
+                            <a class="page-link" href="@PageUrl(Model.Page + 1)">&raquo;</a>
+                        </li>
+
+                    </ul>
+                </nav>
+            }
+        </div>
+    }
+</div>

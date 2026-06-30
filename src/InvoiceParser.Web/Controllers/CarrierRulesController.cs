@@ -4,11 +4,13 @@ using System.Text.RegularExpressions;
 using InvoiceParser.Core.Entities;
 using InvoiceParser.Core.Services;
 using InvoiceParser.Web.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 
 namespace InvoiceParser.Web.Controllers;
 
+[Authorize]
 public class CarrierRulesController : Controller
 {
     private readonly IInvoiceRepository _repo;

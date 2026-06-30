@@ -54,6 +54,24 @@
     "AmountPattern": null
   },
   {
+    "Id": 4,
+    "CarrierId": 1144,
+    "FieldName": "location",
+    "RegexPattern": "^Service\\s+at:",
+    "FieldType": "location_anchor",
+    "TargetTable": "t_charge",
+    "Section": null,
+    "SortOrder": 5,
+    "IsActive": true,
+    "SuccessCount": 0,
+    "FailCount": 0,
+    "ConditionType": "regex_match",
+    "ConditionSource": "line_text",
+    "TransformationsJson": "[{\"Type\":\"regex_remove\",\"Value1\":\"^Service\\\\s+at:\\\\s*\",\"Value2\":null}]",
+    "DescriptionLineOffset": -1,
+    "AmountPattern": null
+  },
+  {
     "Id": 10,
     "CarrierId": 1144,
     "FieldName": "skip",

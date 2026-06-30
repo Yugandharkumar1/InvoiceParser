@@ -106,15 +106,14 @@ public static class SummaryFieldsExtractor
                 @"Payments?\s*-\s*Thank\s+You\s+-?\$?([\d,]+\.\d{2})",
                 @"Total\s+Payments?\s+-?\$?([\d,]+\.\d{2})",
             },
-            ["prev_adj"] = new[]
-            {
-                @"Adjustments?\s+(-?\$?[\d,]+\.\d{2})",
-                @"Credits?\s+(-?\$?[\d,]+\.\d{2})",
-            },
-            ["curr_adj"] = new[]
-            {
-                @"Current\s+Adjustments?\s+(-?\$?[\d,]+\.\d{2})",
-            },
+            // prev_adj and curr_adj are intentionally NOT auto-extracted.
+            // These fields are carrier-specific and too error-prone to detect generically
+            // (e.g. "Adjustments" and "Credits" appear in many contexts unrelated to
+            // the previous-period adjustment balance).
+            // Users can configure a carrier rule via the "Configure" button on the
+            // Review page to capture these values for a specific carrier.
+            // ["prev_adj"] = new[] { @"Adjustments?\s+(-?\$?[\d,]+\.\d{2})", ... },
+            // ["curr_adj"] = new[] { @"Current\s+Adjustments?\s+(-?\$?[\d,]+\.\d{2})" },
             ["curr_chg"] = new[]
             {
                 @"Subtotal[ \t]+(-?\$?[\d,]+\.\d{2})",

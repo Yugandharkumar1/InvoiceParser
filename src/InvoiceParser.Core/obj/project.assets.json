@@ -1937,7 +1937,7 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\ADMIN\\.nuget\\packages\\": {},
+    "C:\\Users\\ADMIN\\AppData\\Local\\Temp\\cursor-sandbox-cache\\b22aea48a7a4998ce210959b6d33ca36\\nuget": {},
     "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
@@ -1946,7 +1946,7 @@
       "projectUniqueName": "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Core\\InvoiceParser.Core.csproj",
       "projectName": "InvoiceParser.Core",
       "projectPath": "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Core\\InvoiceParser.Core.csproj",
-      "packagesPath": "C:\\Users\\ADMIN\\.nuget\\packages\\",
+      "packagesPath": "C:\\Users\\ADMIN\\AppData\\Local\\Temp\\cursor-sandbox-cache\\b22aea48a7a4998ce210959b6d33ca36\\nuget",
       "outputPath": "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Core\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
@@ -1974,6 +1974,11 @@
         "warnAsError": [
           "NU1605"
         ]
+      },
+      "restoreAuditProperties": {
+        "enableAudit": "true",
+        "auditLevel": "low",
+        "auditMode": "direct"
       }
     },
     "frameworks": {
@@ -2020,12 +2025,26 @@
         ],
         "assetTargetFallback": true,
         "warn": true,
+        "downloadDependencies": [
+          {
+            "name": "Microsoft.AspNetCore.App.Ref",
+            "version": "[7.0.16, 7.0.16]"
+          },
+          {
+            "name": "Microsoft.NETCore.App.Ref",
+            "version": "[7.0.16, 7.0.16]"
+          },
+          {
+            "name": "Microsoft.WindowsDesktop.App.Ref",
+            "version": "[7.0.16, 7.0.16]"
+          }
+        ],
         "frameworkReferences": {
           "Microsoft.NETCore.App": {
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\7.0.202\\RuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.201\\RuntimeIdentifierGraph.json"
       }
     }
   }

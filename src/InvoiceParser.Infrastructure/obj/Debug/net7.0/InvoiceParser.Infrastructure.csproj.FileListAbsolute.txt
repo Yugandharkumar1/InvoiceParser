@@ -50,8 +50,10 @@ E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\
 E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.AssemblyInfoInputs.cache
 E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.AssemblyInfo.cs
 E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.csproj.CoreCompileInputs.cache
-E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.csproj.CopyComplete
 E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.dll
 E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\refint\InvoiceParser.Infrastructure.dll
 E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.pdb
 E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\ref\InvoiceParser.Infrastructure.dll
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\bin\Debug\net7.0\InvoiceParser.Infrastructure.runtimeconfig.json
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.genruntimeconfig.cache
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.csproj.CopyComplete

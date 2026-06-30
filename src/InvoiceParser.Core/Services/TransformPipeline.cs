@@ -75,6 +75,7 @@ public static class TransformPipeline
                 "convert_date"    => ConvertDate(value, step.Value1, step.Value2),
                 "join_next_line"  => JoinAdjacentLine(value, step.Value1, lines, matchedIdx, +1),
                 "join_prev_line"  => JoinAdjacentLine(value, step.Value1, lines, matchedIdx, -1),
+                "negate_amount"   => NegateAmount(value),
                 _                 => value,
             };
         }
@@ -172,6 +173,20 @@ public static class TransformPipeline
         }
 
         return value; // no adjacent non-empty line found
+    }
+
+    /// <summary>
+    /// Ensures the extracted amount is stored as a negative number.
+    /// Strips currency symbols, commas, and whitespace, then forces the result negative.
+    /// Example: "515.00" → "-515.00", "-515.00" → "-515.00", "$515.00" → "-515.00".
+    /// </summary>
+    private static string NegateAmount(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return value;
+        var cleaned = Regex.Replace(value.Trim(), @"[$,\s]", string.Empty);
+        if (!decimal.TryParse(cleaned, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount))
+            return value;
+        return (-Math.Abs(amount)).ToString("F2", CultureInfo.InvariantCulture);
     }
 
     private static string ConvertDate(string value, string? inputFormat, string? outputFormat)
