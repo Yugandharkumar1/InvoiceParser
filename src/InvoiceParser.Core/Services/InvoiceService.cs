@@ -105,9 +105,15 @@ public class InvoiceService
     /// <summary>
     /// Scores all carriers against the PDF text and returns the best match,
     /// or null when no carrier is confidently recognised.
-    /// Scoring weights: carrier Name match = ×3, carrier Code match = ×2,
-    /// each configured keyword match = ×3.
-    /// A minimum score of 3 is required to avoid false-positive single-word matches.
+    ///
+    /// Scoring weights:
+    ///   carrier Name word-boundary match  = ×3 per occurrence
+    ///   carrier Code word-boundary match  = ×2 per occurrence
+    ///   configured Detection Keyword      = ×3 per occurrence
+    ///   carrier_account rule matches PDF  = +10 (strong signal — account numbers are carrier-unique)
+    ///
+    /// MinScore raised to 6 so a single incidental word can't trigger detection.
+    /// Ties are broken in favour of the carrier whose account-number rule matched.
     /// </summary>
     public async Task<Carrier?> DetectCarrierAsync(string pdfText)
     {
@@ -115,7 +121,7 @@ public class InvoiceService
 
         var carriers = await GetCarriersAsync();
 
-        // Load detection keywords for every carrier in parallel
+        // Load detection keywords for every carrier
         var keywordMap = new Dictionary<int, List<string>>();
         foreach (var c in carriers)
         {
@@ -123,37 +129,95 @@ public class InvoiceService
             if (kw.Count > 0) keywordMap[c.Id] = kw;
         }
 
-        const int MinScore = 3;
+        // Load the carrier_account rule for every carrier — a successful match is a
+        // very strong signal because account number formats are unique per carrier.
+        var accountRuleMap = new Dictionary<int, string>(); // carrierId → regex pattern
+        foreach (var c in carriers)
+        {
+            var rules = await _ruleStore.GetActiveRulesForCarrierAsync(c.Id);
+            var accountRule = rules.FirstOrDefault(r =>
+                string.Equals(r.FieldName, "carrier_account", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(r.RegexPattern));
+            if (accountRule != null)
+                accountRuleMap[c.Id] = accountRule.RegexPattern;
+        }
 
-        var best = carriers
-            .Select(c =>
+        const int MinScore = 6;
+
+        var scored = carriers.Select(c =>
+        {
+            // Fix 2: word-boundary matching prevents short codes matching inside other words
+            int score = CountWordMatches(pdfText, c.Name) * 3
+                      + CountWordMatches(pdfText, c.Code) * 2;
+
+            if (keywordMap.TryGetValue(c.Id, out var keywords))
+                foreach (var kw in keywords)
+                    score += CountWordMatches(pdfText, kw) * 3;
+
+            // Fix 1: if the carrier's account-number rule fires, add a large bonus
+            bool accountMatched = false;
+            if (accountRuleMap.TryGetValue(c.Id, out var accountPattern))
             {
-                int score = CountOccurrences(pdfText, c.Name) * 3
-                          + CountOccurrences(pdfText, c.Code) * 2;
+                try
+                {
+                    if (Regex.IsMatch(pdfText, accountPattern,
+                        RegexOptions.IgnoreCase | RegexOptions.Singleline))
+                    {
+                        score += 10;
+                        accountMatched = true;
+                    }
+                }
+                catch { /* invalid regex — skip */ }
+            }
 
-                if (keywordMap.TryGetValue(c.Id, out var keywords))
-                    foreach (var kw in keywords)
-                        score += CountOccurrences(pdfText, kw) * 3;
+            return new { Carrier = c, Score = score, AccountMatched = accountMatched };
+        })
+        .Where(x => x.Score >= MinScore)
+        .OrderByDescending(x => x.Score)
+        .ThenByDescending(x => x.AccountMatched ? 1 : 0) // tie-break: prefer account match
+        .ToList();
 
-                return new { Carrier = c, Score = score };
-            })
-            .Where(x => x.Score >= MinScore)
-            .OrderByDescending(x => x.Score)
-            .FirstOrDefault();
+        if (scored.Count == 0)
+        {
+            _logger.LogDebug("Carrier detection: no carrier reached MinScore {Min}.", MinScore);
+            return null;
+        }
 
-        return best?.Carrier;
+        var winner = scored[0];
+        _logger.LogInformation(
+            "Carrier detected: {Name} (score={Score}, accountMatched={AM}){Tie}",
+            winner.Carrier.Name, winner.Score, winner.AccountMatched,
+            scored.Count > 1 ? $" — runner-up: {scored[1].Carrier.Name} score={scored[1].Score}" : "");
+
+        return winner.Carrier;
     }
 
-    private static int CountOccurrences(string text, string term)
+    /// <summary>
+    /// Counts occurrences of <paramref name="term"/> in <paramref name="text"/> using
+    /// whole-word matching (\\b boundaries) so short codes like "AT" don't match inside
+    /// words such as "STATEMENT" or "DATA".
+    /// Falls back to plain substring count if the term contains regex special characters
+    /// that can't be safely wrapped in word boundaries.
+    /// </summary>
+    private static int CountWordMatches(string text, string term)
     {
         if (string.IsNullOrWhiteSpace(term) || term.Length < 2) return 0;
-        int count = 0, idx = 0;
-        while ((idx = text.IndexOf(term, idx, StringComparison.OrdinalIgnoreCase)) >= 0)
+        try
         {
-            count++;
-            idx += term.Length;
+            // Use word boundaries only when the term starts/ends with a word character
+            var escaped = Regex.Escape(term);
+            var prefix = Regex.IsMatch(term[..1], @"\w") ? @"\b" : string.Empty;
+            var suffix = Regex.IsMatch(term[^1..], @"\w") ? @"\b" : string.Empty;
+            return Regex.Matches(text, prefix + escaped + suffix, RegexOptions.IgnoreCase).Count;
         }
-        return count;
+        catch
+        {
+            // Fallback to plain substring count for edge cases
+            int count = 0, idx = 0;
+            while ((idx = text.IndexOf(term, idx, StringComparison.OrdinalIgnoreCase)) >= 0)
+            { count++; idx += term.Length; }
+            return count;
+        }
     }
     public Task<Invoice?> GetInvoiceByIdAsync(int id) => _repository.GetInvoiceByIdAsync(id);
     public Task<List<Invoice>> GetAllInvoicesAsync() => _repository.GetAllInvoicesAsync();

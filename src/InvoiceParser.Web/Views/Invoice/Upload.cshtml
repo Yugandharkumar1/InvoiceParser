@@ -98,6 +98,14 @@
 @section Scripts {
 <script>
 $(document).ready(function () {
+    // Auto-focus the search box whenever any Select2 dropdown opens
+    $(document).on('select2:open', function () {
+        setTimeout(function () {
+            var searchField = document.querySelector('.select2-container--open .select2-search__field');
+            if (searchField) searchField.focus();
+        }, 10);
+    });
+
     // ── Select2 for Customer ─────────────────────────────────────────────────
     $('#CustomerId').select2({
         theme: 'bootstrap-5',

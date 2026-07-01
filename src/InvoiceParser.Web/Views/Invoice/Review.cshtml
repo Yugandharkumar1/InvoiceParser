@@ -1997,9 +1997,26 @@
         // Fields that support the "Store as negative" option
         var _negateFields = ['prev_adj', 'curr_adj'];
 
+        // Human-readable labels for summary field names shown in the modal
+        var _fieldLabels = {
+            'invoice_number':  'Invoice Number',
+            'carrier_account': 'Carrier Account',
+            'invoice_date':    'Invoice Date',
+            'invoice_st_dtm':  'Invoice Start Date',
+            'invoice_end_dtm': 'Invoice End Date',
+            'invoice_due_dtm': 'Invoice Due Date',
+            'beg_bal':         'Beginning Balance',
+            'payment':         'Payment',
+            'prev_adj':        'Previous Adjustments',
+            'curr_adj':        'Current Adjustments',
+            'curr_chg':        'Current Charges',
+            'curr_tax':        'Taxes, Fees & Surcharges',
+            'end_bal':         'Total Charges',
+        };
+
         function openRuleModal(fieldName) {
             _ruleFieldName = fieldName;
-            document.getElementById('ruleFieldName').value = _ruleFieldName;
+            document.getElementById('ruleFieldName').value = _fieldLabels[fieldName] || fieldName;
             document.getElementById('rulePattern').value   = '';
             document.getElementById('ruleTestResultBox').style.display = 'none';
 

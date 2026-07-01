@@ -124,6 +124,14 @@ public static class ChargeExtractor
         string? currentLine     = null;
         string? currentLocation = null;
 
+        // ── TEMP DEBUG: write PDF lines visible to extractor ─────────────────
+        var _debugLines = new System.Text.StringBuilder();
+        _debugLines.AppendLine($"=== ChargeExtractor: {lines.Length} raw lines ===");
+        for (int di = 0; di < lines.Length; di++)
+            _debugLines.AppendLine($"[{di:D3}] {lines[di]}");
+        try { System.IO.File.WriteAllText(@"C:\Temp\charge_debug.txt", _debugLines.ToString()); } catch { }
+        // ─────────────────────────────────────────────────────────────────────
+
         for (int lineIdx = 0; lineIdx < lines.Length; lineIdx++)
         {
             var rawLine = lines[lineIdx];
@@ -411,6 +419,13 @@ public static class ChargeExtractor
 
             charges.Add(charge);
         }
+
+        // ── TEMP DEBUG: append captured charges ────────────────────────────────
+        _debugLines.AppendLine("=== Captured charges (before dedup/cleanup) ===");
+        foreach (var c in charges)
+            _debugLines.AppendLine($"  desc={c.ChargeDescription}  amt={c.Amount}");
+        try { System.IO.File.WriteAllText(@"C:\Temp\charge_debug.txt", _debugLines.ToString()); } catch { }
+        // ─────────────────────────────────────────────────────────────────────
 
         // ── Post-processing: apply charge_desc cleanup rules to every description ──
         // These rules run after all charges are collected so they cover descriptions

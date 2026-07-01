@@ -522,8 +522,14 @@ function renderStep2() {
         listEl.appendChild(div);
     });
 
-    // Line search
-    document.getElementById('lineSearch').addEventListener('input', function () {
+    // Clear the search box and reset any previous filter state,
+    // then re-attach the listener cleanly (clone removes stacked listeners from prior renders)
+    var oldSearch = document.getElementById('lineSearch');
+    var newSearch = oldSearch.cloneNode(true);
+    newSearch.value = '';
+    oldSearch.parentNode.replaceChild(newSearch, oldSearch);
+
+    newSearch.addEventListener('input', function () {
         var term = this.value.trim().toLowerCase();
         document.querySelectorAll('.pdf-line').forEach(function (el) {
             el.classList.toggle('line-hidden', term && !el.getAttribute('data-text').includes(term));
