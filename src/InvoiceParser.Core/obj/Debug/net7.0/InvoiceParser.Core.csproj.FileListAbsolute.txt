@@ -46,4 +46,3 @@ E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Core\obj\Debug\net7.0\Inv
 E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Core\obj\Debug\net7.0\refint\InvoiceParser.Core.dll
 E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Core\obj\Debug\net7.0\InvoiceParser.Core.pdb
 E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Core\obj\Debug\net7.0\ref\InvoiceParser.Core.dll
-E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Core\obj\Debug\net7.0\InvoiceParser.Core.sourcelink.json
