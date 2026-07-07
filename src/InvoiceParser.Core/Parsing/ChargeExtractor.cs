@@ -298,6 +298,7 @@ public static class ChargeExtractor
                                 Amount            = amount,
                                 Line              = currentLine,
                                 Location          = currentLocation,
+                                SourceLineIndex   = lineIdx,
                             });
                         }
                     }
@@ -360,6 +361,7 @@ public static class ChargeExtractor
                             Amount            = amount,
                             Line              = currentLine,
                             Location          = currentLocation,
+                            SourceLineIndex   = lineIdx,
                         });
                     }
 
@@ -402,6 +404,7 @@ public static class ChargeExtractor
                 ChargeDescription = desc,
                 Line              = currentLine,
                 Location          = currentLocation,
+                SourceLineIndex   = lineIdx,
             };
 
             var amountToken = match.Groups[2].Value.Trim();
@@ -523,7 +526,12 @@ public static class ChargeExtractor
         return false;
     }
 
-    /// <summary>Remove duplicate rows (same description, amount, line after normalize).</summary>
+    /// <summary>
+    /// Remove duplicate rows (same description, amount, line, and source-line index after normalise).
+    /// SourceLineIndex ensures legitimately identical charges that originate from DIFFERENT lines of
+    /// the PDF (e.g. same service billed to two different account numbers on the same invoice) are
+    /// never collapsed — only true extraction duplicates (same PDF line captured twice) are removed.
+    /// </summary>
     public static void DeduplicateCharges(IList<ParsedCharge> charges)
     {
         if (charges.Count <= 1) return;
@@ -536,7 +544,8 @@ public static class ChargeExtractor
             var desc = (c.ChargeDescription ?? "").Trim().ToLowerInvariant();
             var amt = c.Amount?.ToString("F2", CultureInfo.InvariantCulture) ?? "";
             var line = (c.Line ?? "").Trim().ToLowerInvariant();
-            var key = desc + "|" + amt + "|" + line;
+            // Include SourceLineIndex so identical charges from different PDF lines are preserved.
+            var key = desc + "|" + amt + "|" + line + "|" + c.SourceLineIndex;
             if (seen.Add(key))
                 keep.Add(c);
         }
