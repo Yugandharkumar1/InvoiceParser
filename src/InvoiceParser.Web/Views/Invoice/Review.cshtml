@@ -214,8 +214,8 @@
                                 @if (!string.IsNullOrWhiteSpace(Model.Orig_PreviousAdjustments))
                                 { <span class="badge bg-success badge-status" title="Auto-detected by parser">Auto</span> }
                                 else
-                                { <span class="badge bg-secondary badge-status" title="Not detected — enter manually">Manual</span>
-                                  <button type="button" class="btn-create-rule" data-field="prev_adj" title="Teach parser where to find this field">Configure ✎</button> }
+                                { <span class="badge bg-secondary badge-status" title="Not detected — enter manually">Manual</span> }
+                                <button type="button" class="btn-create-rule" data-field="prev_adj" title="Configure extraction rule for this field">Configure ✎</button>
                             </label>
                             <div class="input-group">
                                 <span class="input-group-text">$</span>
@@ -229,8 +229,8 @@
                                 @if (!string.IsNullOrWhiteSpace(Model.Orig_CurrentAdjustments))
                                 { <span class="badge bg-success badge-status" title="Auto-detected by parser">Auto</span> }
                                 else
-                                { <span class="badge bg-secondary badge-status" title="Not detected — enter manually">Manual</span>
-                                  <button type="button" class="btn-create-rule" data-field="curr_adj" title="Teach parser where to find this field">Configure ✎</button> }
+                                { <span class="badge bg-secondary badge-status" title="Not detected — enter manually">Manual</span> }
+                                <button type="button" class="btn-create-rule" data-field="curr_adj" title="Configure extraction rule for this field">Configure ✎</button>
                             </label>
                             <div class="input-group">
                                 <span class="input-group-text">$</span>
@@ -794,6 +794,13 @@
                     <div id="pdfLinesContainer" class="border rounded p-2 font-monospace small"
                          style="max-height:260px;overflow-y:auto;background:#f8f9fa;"></div>
                     <div id="pdfLinesNoMatch" class="text-muted small mt-1" style="display:none;">No lines match your filter.</div>
+
+                    <!-- Selected-line confirmation banner -->
+                    <div id="selectedLineBanner" class="mt-2 px-3 py-2 rounded d-none"
+                         style="background:#e8f0fe;border-left:4px solid #0d6efd;font-size:0.82rem;">
+                        <span class="fw-semibold text-primary me-1">✓ Selected:</span>
+                        <span id="selectedLineBannerText" class="font-monospace text-dark"></span>
+                    </div>
                 </div>
 
                 <div class="mb-3">
@@ -894,9 +901,26 @@
                     <span class="text-muted small align-self-center">Preview extraction result before saving.</span>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="saveRuleBtn">Save Rule</button>
+            <div class="modal-footer flex-column align-items-stretch gap-2">
+                <!-- Negative amount option — only shown for adjustment fields -->
+                <div id="negateAmountRow" class="d-none w-100">
+                    <div class="alert alert-warning py-2 px-3 mb-0 d-flex align-items-center gap-2">
+                        <div class="form-check mb-0">
+                            <input class="form-check-input" type="checkbox" id="negateAmountChk" />
+                            <label class="form-check-label fw-semibold" for="negateAmountChk">
+                                Store as negative amount
+                            </label>
+                        </div>
+                        <span class="text-muted small ms-1">
+                            Check this if the invoice shows the value as positive (e.g. <code>515.00</code>)
+                            but it should be stored as a credit/deduction (e.g. <code>-515.00</code>).
+                        </span>
+                    </div>
+                </div>
+                <div class="d-flex gap-2 justify-content-end w-100">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveRuleBtn">Save Rule</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1970,11 +1994,42 @@
         var _rulePdfText    = (document.querySelector('[name="PdfText"]') || {}).value || '';
         var _ruleModal      = new bootstrap.Modal(document.getElementById('createRuleModal'));
 
+        // Fields that support the "Store as negative" option
+        var _negateFields = ['prev_adj', 'curr_adj'];
+
+        // Human-readable labels for summary field names shown in the modal
+        var _fieldLabels = {
+            'invoice_number':  'Invoice Number',
+            'carrier_account': 'Carrier Account',
+            'invoice_date':    'Invoice Date',
+            'invoice_st_dtm':  'Invoice Start Date',
+            'invoice_end_dtm': 'Invoice End Date',
+            'invoice_due_dtm': 'Invoice Due Date',
+            'beg_bal':         'Beginning Balance',
+            'payment':         'Payment',
+            'prev_adj':        'Previous Adjustments',
+            'curr_adj':        'Current Adjustments',
+            'curr_chg':        'Current Charges',
+            'curr_tax':        'Taxes, Fees & Surcharges',
+            'end_bal':         'Total Charges',
+        };
+
         function openRuleModal(fieldName) {
             _ruleFieldName = fieldName;
-            document.getElementById('ruleFieldName').value = _ruleFieldName;
+            document.getElementById('ruleFieldName').value = _fieldLabels[fieldName] || fieldName;
             document.getElementById('rulePattern').value   = '';
             document.getElementById('ruleTestResultBox').style.display = 'none';
+
+            // Show / hide the negative-amount option
+            var negRow = document.getElementById('negateAmountRow');
+            var negChk = document.getElementById('negateAmountChk');
+            if (_negateFields.indexOf(fieldName) >= 0) {
+                negRow.classList.remove('d-none');
+                negChk.checked = false; // reset each time
+            } else {
+                negRow.classList.add('d-none');
+                negChk.checked = false;
+            }
 
             // Reset friendly builder
             document.getElementById('rulePrefix').value          = '';
@@ -2001,6 +2056,10 @@
                 document.getElementById('pdfLinesSearchClear').style.display = 'none';
                 document.getElementById('pdfLinesNoMatch').style.display = 'none';
             }
+            // Reset selection banner
+            document.getElementById('selectedLineBanner').classList.add('d-none');
+            document.getElementById('selectedLineBannerText').textContent = '';
+
             populatePdfLines();
             _ruleModal.show();
         }
@@ -2070,18 +2129,43 @@
                 div.textContent = line;
                 div.setAttribute('data-line', line);
                 div.style.cursor = 'pointer';
+                div.style.transition = 'background 0.1s';
                 div.addEventListener('click', function () {
+                    // Clear previous selection
                     document.querySelectorAll('.pdf-line-item').forEach(function (el) {
-                        el.classList.remove('bg-primary', 'text-white');
+                        el.classList.remove('pdf-line-selected');
+                        el.style.borderLeft = '';
+                        el.style.background = '';
+                        el.style.color = '';
+                        el.style.fontWeight = '';
                     });
-                    div.classList.add('bg-primary', 'text-white');
+                    // Highlight selected row with a distinct left-border accent
+                    div.classList.add('pdf-line-selected');
+                    div.style.borderLeft   = '3px solid #0d6efd';
+                    div.style.background   = '#dbeafe';
+                    div.style.color        = '#1e3a5f';
+                    div.style.fontWeight   = '600';
+                    div.style.paddingLeft  = '6px';
+
+                    // Scroll into view so it stays visible
+                    div.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+
+                    // Show confirmation banner below the list
+                    var banner = document.getElementById('selectedLineBanner');
+                    var bannerText = document.getElementById('selectedLineBannerText');
+                    var display = line.length > 90 ? line.substring(0, 90) + '…' : line;
+                    bannerText.textContent = display;
+                    banner.classList.remove('d-none');
+
                     suggestPattern(line.trim());
                 });
                 div.addEventListener('mouseenter', function () {
-                    if (!div.classList.contains('bg-primary')) div.classList.add('bg-light');
+                    if (!div.classList.contains('pdf-line-selected'))
+                        div.style.background = '#f0f4ff';
                 });
                 div.addEventListener('mouseleave', function () {
-                    if (!div.classList.contains('bg-primary')) div.classList.remove('bg-light');
+                    if (!div.classList.contains('pdf-line-selected'))
+                        div.style.background = '';
                 });
                 container.appendChild(div);
             });
@@ -2321,7 +2405,7 @@
 
         document.getElementById('ruleConditionType').addEventListener('change', function () {
             showBuilderForConditionType(this.value);
-            var selected = document.querySelector('#pdfLinesContainer .pdf-line-item.bg-primary');
+            var selected = document.querySelector('#pdfLinesContainer .pdf-line-item.pdf-line-selected');
             if (selected) suggestPattern(selected.getAttribute('data-line') || selected.textContent);
         });
 
@@ -2501,6 +2585,12 @@
             form.append('FieldType',     'string');
             form.append('SortOrder',     '10');
             form.append('IsActive',      'true');
+
+            // If "Store as negative" is checked, add a negate_amount transform
+            var negChk = document.getElementById('negateAmountChk');
+            if (negChk && negChk.checked) {
+                form.append('TransformationsJson', JSON.stringify([{ type: 'negate_amount' }]));
+            }
 
             fetch('/CarrierRules/QuickCreate', { method: 'POST', body: form })
             .then(function (r) { return r.json(); })

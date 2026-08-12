@@ -18,13 +18,22 @@ public class InvoiceRepository : IInvoiceRepository
     }
 
     public async Task<List<Customer>> GetCustomersAsync()
-        => await _iPathDb.Customers.OrderBy(c => c.Name).ToListAsync();
+    {
+        try { return await _iPathDb.Customers.OrderBy(c => c.Name).ToListAsync(); }
+        catch { return new List<Customer>(); }
+    }
 
     public async Task<List<Carrier>> GetCarriersAsync()
-        => await _iPathDb.Carriers.OrderBy(c => c.Name).ToListAsync();
+    {
+        try { return await _iPathDb.Carriers.OrderBy(c => c.Name).ToListAsync(); }
+        catch { return new List<Carrier>(); }
+    }
 
     public async Task<Carrier?> GetCarrierByIdAsync(int id)
-        => await _iPathDb.Carriers.FindAsync(id);
+    {
+        try { return await _iPathDb.Carriers.FindAsync(id); }
+        catch { return null; }
+    }
 
     public async Task<List<VendorParsingRule>> GetRulesForCarrierAsync(int carrierId)
         => await _db.VendorParsingRules
@@ -84,6 +93,13 @@ public class InvoiceRepository : IInvoiceRepository
             .OrderByDescending(i => i.InvoiceDate)
             .ThenByDescending(i => i.Id)
             .Select(i => i.PdfText)
+            .FirstOrDefaultAsync();
+
+    public async Task<Invoice?> GetLatestInvoiceForCarrierAsync(int carrierId)
+        => await _db.Invoices
+            .Where(i => i.CarrierId == carrierId && i.PdfText != null && i.PdfText != "")
+            .OrderByDescending(i => i.InvoiceDate)
+            .ThenByDescending(i => i.Id)
             .FirstOrDefaultAsync();
 
     public async Task<Invoice> SaveInvoiceAsync(Invoice invoice)

@@ -35,6 +35,8 @@ public static class SummaryFieldsExtractor
                 @"BILL\s+DATE\s*:\s*([\d/\-]+)",
                 @"Bill\s+At\s+A\s+Glance\s+([\d/\-]+)",
                 @"Bill\s+Date\s+([A-Za-z]+\s+\d{1,2},?\s+\d{4})",
+                // TDS: standalone date immediately followed by "STATEMENT OF SERVICE" on the next line
+                @"([A-Za-z]+\s+\d{1,2},?\s+\d{4})\s*\r?\n\s*STATEMENT\s+OF\s+SERVICE",
             },
             ["invoice_due_dtm"] = new[]
             {
@@ -73,18 +75,21 @@ public static class SummaryFieldsExtractor
             },
             ["beg_bal"] = new[]
             {
-                @"Previous\s+Statement\s+Balance\s+\$?(-?[\d,]+\.\d{2})",
-                @"Previous\s+Balance\s+\$?(-?[\d,]+\.\d{2})",
-                @"Prior\s+Balance\s+\$?(-?[\d,]+\.\d{2})",
-                @"Beginning\s+Balance\s+\$?(-?[\d,]+\.\d{2})",
-                @"Your\s+last\s+bill\s+\$?(-?[\d,]+\.\d{2})",
-                @"Previous\s+bill\s+\$?(-?[\d,]+\.\d{2})",
-                @"Last\s+Statement\s+Balance\s+\$?(-?[\d,]+\.\d{2})",
-                @"BALANCE\s+FROM\s+LAST\s+BILLING\s+\$?(-?[\d,]+\.\d{2})",
-                @"PREVIOUS\s+BALANCE\s+DUE\s+\$?(-?[\d,]+\.\d{2})",
-                @"last\s+bill\s+of\s+\$?(-?[\d,]+\.\d{2})",
-                @"Previous\s+Bill\s+Payment/Adj.*?\r?\n\s*\$?(-?[\d,]+\.\d{2})\s",
-                @"Balance\s+from\s+last\s+bill\s+\$?(-?[\d,]+\.\d{2})",
+                // Patterns capture the full monetary token (including any leading -$ prefix);
+                // MonetaryParser.TryParse normalises -$X.XX, $X.XX, and -X.XX uniformly.
+                @"Previous\s+Statement\s+Balance\s+(-?\$?[\d,]+\.\d{2})",
+                @"Previous\s+Balance\s+(-?\$?[\d,]+\.\d{2})",
+                @"Prior\s+Balance\s+(-?\$?[\d,]+\.\d{2})",
+                @"Beginning\s+Balance\s+(-?\$?[\d,]+\.\d{2})",
+                @"Your\s+last\s+bill\s+(-?\$?[\d,]+\.\d{2})",
+                @"Previous\s+bill\s+(-?\$?[\d,]+\.\d{2})",
+                @"Last\s+Statement\s+Balance\s+(-?\$?[\d,]+\.\d{2})",
+                @"BALANCE\s+FROM\s+LAST\s+BILLING\s+(-?\$?[\d,]+\.\d{2})",
+                @"PREVIOUS\s+BALANCE\s+DUE\s+(-?\$?[\d,]+\.\d{2})",
+                @"last\s+bill\s+of\s+(-?\$?[\d,]+\.\d{2})",
+                @"Previous\s+Bill\s+Payment/Adj.*?\r?\n\s*(-?\$?[\d,]+\.\d{2})\s",
+                @"Balance\s+from\s+last\s+bill\s+(-?\$?[\d,]+\.\d{2})",
+                @"PREVIOUS\s+BALANCE\s+(-?\$?[\d,]+\.\d{2})",
             },
             ["payment"] = new[]
             {
@@ -101,37 +106,37 @@ public static class SummaryFieldsExtractor
                 @"Payments?\s*-\s*Thank\s+You\s+-?\$?([\d,]+\.\d{2})",
                 @"Total\s+Payments?\s+-?\$?([\d,]+\.\d{2})",
             },
-            ["prev_adj"] = new[]
-            {
-                @"Adjustments?\s+\$?(-?[\d,]+\.\d{2})",
-                @"Credits?\s+\$?(-?[\d,]+\.\d{2})",
-            },
-            ["curr_adj"] = new[]
-            {
-                @"Current\s+Adjustments?\s+\$?(-?[\d,]+\.\d{2})",
-            },
+            // prev_adj and curr_adj are intentionally NOT auto-extracted.
+            // These fields are carrier-specific and too error-prone to detect generically
+            // (e.g. "Adjustments" and "Credits" appear in many contexts unrelated to
+            // the previous-period adjustment balance).
+            // Users can configure a carrier rule via the "Configure" button on the
+            // Review page to capture these values for a specific carrier.
+            // ["prev_adj"] = new[] { @"Adjustments?\s+(-?\$?[\d,]+\.\d{2})", ... },
+            // ["curr_adj"] = new[] { @"Current\s+Adjustments?\s+(-?\$?[\d,]+\.\d{2})" },
             ["curr_chg"] = new[]
             {
-                @"Subtotal[ \t]+\$?(-?[\d,]+\.\d{2})",
-                @"Sub\s*-?\s*total[ \t]+\$?(-?[\d,]+\.\d{2})",
-                @"Current\s+Charges?\s+Subtotal\s+\$?(-?[\d,]+\.\d{2})",
-                @"Total\s+Current\s+Charges?\s+\$?(-?[\d,]+\.\d{2})",
-                @"This\s+month'?s\s+charges\s+.*?\$?(-?[\d,]+\.\d{2})",
-                @"Total\s+Current\s+charges?\s+due\s+by\s+[\d/]+\s+\$?(-?[\d,]+\.\d{2})",
-                @"New\s+Charges?\s+\$?(-?[\d,]+\.\d{2})",
-                @"Monthly\s+Charges?\s+\$?(-?[\d,]+\.\d{2})",
-                @"Total\s+Charges\s+\$?(-?[\d,]+\.\d{2})",
-                @"CURRENT\s+BILLING(?:\s+AMOUNT)?[ \t]+\$?(-?[\d,]+\.\d{2})",
-                @"Current\s+Charges\s+-\s+Due\s+on\s+[\d/]+\s+\$?(-?[\d,]+\.\d{2})",
-                @"Current\s+Billing\s+Total\s+Due\s*\r?\n\s*\$?[\d,]+\.\d{2}\s+\$?[\d,]+\.\d{2}(?:CR)?\s+\$?(-?[\d,]+\.\d{2})",
+                @"Subtotal[ \t]+(-?\$?[\d,]+\.\d{2})",
+                @"Sub\s*-?\s*total[ \t]+(-?\$?[\d,]+\.\d{2})",
+                @"Current\s+Charges?\s+Subtotal\s+(-?\$?[\d,]+\.\d{2})",
+                @"Total\s+Current\s+Charges?\s+(-?\$?[\d,]+\.\d{2})",
+                @"This\s+month'?s\s+charges\s+.*?(-?\$?[\d,]+\.\d{2})",
+                @"Total\s+Current\s+charges?\s+due\s+by\s+[\d/]+\s+(-?\$?[\d,]+\.\d{2})",
+                @"New\s+Charges?\s+(-?\$?[\d,]+\.\d{2})",
+                @"Monthly\s+Charges?\s+(-?\$?[\d,]+\.\d{2})",
+                @"Total\s+Charges\s+(-?\$?[\d,]+\.\d{2})",
+                @"CURRENT\s+BILLING(?:\s+AMOUNT)?[ \t]+(-?\$?[\d,]+\.\d{2})",
+                @"Current\s+Charges\s+-\s+Due\s+on\s+[\d/]+\s+(-?\$?[\d,]+\.\d{2})",
+                @"Current\s+Billing\s+Total\s+Due\s*\r?\n\s*\$?[\d,]+\.\d{2}\s+\$?[\d,]+\.\d{2}(?:CR)?\s+(-?\$?[\d,]+\.\d{2})",
+                @"CURRENT\s+MONTHLY\s+CHARGES\s+(-?\$?[\d,]+\.\d{2})",
             },
             ["curr_tax"] = new[]
             {
-                @"Taxes,?\s*Fees\s*(?:&|and)\s*Surcharges?\s+\$?(-?[\d,]+\.\d{2})",
-                @"Total\s+Taxes?\s+\$?(-?[\d,]+\.\d{2})",
-                @"Taxes?\s+and\s+(?:Fees|Surcharges)\s+\$?(-?[\d,]+\.\d{2})",
-                @"Government\s+(?:Taxes|Fees).*?\$?(-?[\d,]+\.\d{2})",
-                @"Taxes?\s+&\s+Surcharges?\s+\$?(-?[\d,]+\.\d{2})",
+                @"Taxes,?\s*Fees\s*(?:&|and)\s*Surcharges?\s+(-?\$?[\d,]+\.\d{2})",
+                @"Total\s+Taxes?\s+(-?\$?[\d,]+\.\d{2})",
+                @"Taxes?\s+and\s+(?:Fees|Surcharges)\s+(-?\$?[\d,]+\.\d{2})",
+                @"Government\s+(?:Taxes|Fees).*?(-?\$?[\d,]+\.\d{2})",
+                @"Taxes?\s+&\s+Surcharges?\s+(-?\$?[\d,]+\.\d{2})",
             },
         };
 

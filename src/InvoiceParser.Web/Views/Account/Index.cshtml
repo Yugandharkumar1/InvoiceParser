@@ -1,0 +1,52 @@
+@model List<InvoiceParser.Core.Entities.IPathUser>
+@{
+    ViewData["Title"] = "Users";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-0">iPath Users</h2>
+        <p class="text-muted mb-0 small">Showing active users with login access. Manage users in iPath.</p>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Name</th>
+                    <th>Login / Email</th>
+                    <th>Customer ID</th>
+                    <th>Admin</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var user in Model)
+                {
+                    <tr>
+                        <td>@(user.DisplayName ?? "—")</td>
+                        <td>@user.LoginName</td>
+                        <td class="text-muted small">@user.CustomerId</td>
+                        <td>
+                            @if (user.IsAdmin)
+                            {
+                                <span class="badge bg-danger">Admin</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">User</span>
+                            }
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Any())
+                {
+                    <tr>
+                        <td colspan="4" class="text-center text-muted py-4">No active users found.</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

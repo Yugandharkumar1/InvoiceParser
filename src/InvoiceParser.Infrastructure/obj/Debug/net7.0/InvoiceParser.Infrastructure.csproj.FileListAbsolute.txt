@@ -36,3 +36,24 @@ E:\VCOM\InvoiceParser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\refint\I
 E:\VCOM\InvoiceParser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.pdb
 E:\VCOM\InvoiceParser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\ref\InvoiceParser.Infrastructure.dll
 E:\VCOM\InvoiceParser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.csproj.CopyComplete
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\bin\Debug\net7.0\x86\leptonica-1.82.0.dll
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\bin\Debug\net7.0\x86\tesseract50.dll
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\bin\Debug\net7.0\x64\leptonica-1.82.0.dll
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\bin\Debug\net7.0\x64\tesseract50.dll
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\bin\Debug\net7.0\InvoiceParser.Infrastructure.deps.json
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\bin\Debug\net7.0\InvoiceParser.Infrastructure.dll
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\bin\Debug\net7.0\InvoiceParser.Infrastructure.pdb
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\bin\Debug\net7.0\InvoiceParser.Core.dll
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\bin\Debug\net7.0\InvoiceParser.Core.pdb
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.csproj.AssemblyReference.cache
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.AssemblyInfoInputs.cache
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.AssemblyInfo.cs
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.csproj.CoreCompileInputs.cache
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.dll
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\refint\InvoiceParser.Infrastructure.dll
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.pdb
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\ref\InvoiceParser.Infrastructure.dll
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\bin\Debug\net7.0\InvoiceParser.Infrastructure.runtimeconfig.json
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.genruntimeconfig.cache
+E:\VCOM\invoice parser\invoiceparser\src\InvoiceParser.Infrastructure\obj\Debug\net7.0\InvoiceParser.Infrastructure.csproj.CopyComplete

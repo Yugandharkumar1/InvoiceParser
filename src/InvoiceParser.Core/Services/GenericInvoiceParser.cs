@@ -19,6 +19,13 @@ public class ParsedCharge
     public decimal? Amount { get; set; }
     public string? Line { get; set; }
     public string? Location { get; set; }
+    /// <summary>
+    /// Zero-based index of the line in the PDF text array that triggered this charge.
+    /// Used by DeduplicateCharges to distinguish legitimately identical charges
+    /// (e.g. same service billed to two different accounts on the same invoice)
+    /// from true extraction duplicates (same line captured by two code paths).
+    /// </summary>
+    public int SourceLineIndex { get; set; } = -1;
 }
 
 public class ParsedUsageItem

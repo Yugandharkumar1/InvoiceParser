@@ -79,6 +79,14 @@
         border-radius: 0 4px 4px 0;
         font-size: .85rem;
     }
+    /* Invoice line picker (Edit page) */
+    .edit-line-pick {
+        padding: 5px 10px; cursor: pointer; font-size: .8rem;
+        font-family: monospace; border-bottom: 1px solid #eee;
+        transition: background .1s;
+    }
+    .edit-line-pick:hover   { background: #e7f1ff; }
+    .edit-line-pick.selected { background: #0d6efd; color: #fff; }
 </style>
 
 <div class="row justify-content-center">
@@ -131,10 +139,13 @@
                  STEP 1 — What are you capturing?
             ══════════════════════════════════════════════════════════════ -->
             <div class="mb-4">
-                <div class="step-badge mb-2">
+                <div class="step-badge mb-1">
                     <span class="step-circle">1</span>
                     <span class="fw-semibold fs-6">What information are you capturing?</span>
                 </div>
+                <p class="text-muted small mb-2 ps-1">
+                    Choose the invoice field this rule extracts — for example, the invoice number, a charge description, or the total due.
+                </p>
 
                 <select id="friendlyFieldPicker" class="form-select form-select-lg mb-2">
                     <option value="">— Select the field you want to capture —</option>
@@ -204,17 +215,24 @@ RECURRING CHARGE  $0.00  ← trigger line (this line)</pre>
                     </div>
                 </div>
 
-                <div class="d-flex align-items-center gap-3 mt-2">
+                <div class="d-flex align-items-center gap-3 mt-3 p-2 bg-light rounded border">
                     <div class="form-check form-switch mb-0">
                         <input type="checkbox" class="form-check-input" role="switch" id="isActiveToggle"
                                @(Model.IsActive ? "checked" : "") />
-                        <label class="form-check-label" for="isActiveToggle">Rule is active</label>
+                        <label class="form-check-label fw-semibold" for="isActiveToggle">Rule is active</label>
                     </div>
                     <div class="ms-auto d-flex align-items-center gap-2">
-                        <span class="text-muted small">Priority:</span>
+                        <label class="text-muted small mb-0" for="sortOrderInput">Run order</label>
                         <input type="number" id="sortOrderInput" class="form-control form-control-sm"
-                               style="width:75px;" value="@Model.SortOrder"
-                               title="Lower numbers run first. Use this to control which rule wins when multiple rules match." />
+                               style="width:70px;" value="@Model.SortOrder" min="1" />
+                        <button type="button" class="btn btn-link btn-sm p-0 text-secondary"
+                                tabindex="0"
+                                data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="left" data-bs-html="true"
+                                data-bs-title="What is Run Order?"
+                                data-bs-content="Controls which rule runs first when multiple rules could match the same invoice line.<br><br><strong>Lower number = runs first.</strong> Default is 10.<br><br>Example: a rule with order <strong>5</strong> runs before one with order <strong>10</strong>. If both match, the order-5 rule wins."
+                                aria-label="Run order help">
+                            <i class="bi bi-question-circle-fill"></i>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -225,65 +243,140 @@ RECURRING CHARGE  $0.00  ← trigger line (this line)</pre>
                  STEP 2 — When should this rule activate?
             ══════════════════════════════════════════════════════════════ -->
             <div class="mb-4" id="conditionSection">
-                <div class="step-badge mb-3">
+                <div class="step-badge mb-1">
                     <span class="step-circle">2</span>
                     <span class="fw-semibold fs-6">When should this rule activate?</span>
                 </div>
+                <p class="text-muted small mb-3 ps-1">
+                    Tell the system which lines in the invoice this rule should apply to.
+                    Pick a match type, then type the text to look for.
+                </p>
 
                 <div class="condition-sentence ps-1">
                     <span class="join-word">Activate when the</span>
 
-                    <select id="friendlySourceSelect" class="form-select" style="width:auto;min-width:130px;">
-                        <option value="line_text">line text</option>
-                        <option value="amount">amount value</option>
-                        <option value="field_value">extracted value</option>
+                    <select id="friendlySourceSelect" class="form-select" style="width:auto;min-width:160px;"
+                            title="What part of the invoice to look at">
+                        <option value="line_text">line text (most common)</option>
+                        <option value="amount">dollar amount</option>
+                        <option value="field_value">previously extracted value</option>
                     </select>
 
-                    <select id="friendlyCondTypeSelect" class="form-select" style="width:auto;min-width:150px;">
+                    <select id="friendlyCondTypeSelect" class="form-select" style="width:auto;min-width:210px;">
                         <option value="contains">contains</option>
                         <option value="starts_with">starts with</option>
                         <option value="ends_with">ends with</option>
-                        <option value="equals">is exactly</option>
-                        <option value="not_equals">is not</option>
-                        <option value="does_not_contain">does not contain</option>
+                        <option value="equals">is exactly (full match)</option>
+                        <option value="not_equals">is NOT exactly</option>
+                        <option value="does_not_contain">does NOT contain</option>
                         <option value="is_empty">is empty</option>
                         <option value="is_not_empty">is not empty</option>
-                        <option value="greater_than">is greater than</option>
-                        <option value="less_than">is less than</option>
-                        <option value="regex_match">matches pattern</option>
+                        <option value="greater_than">is greater than (number)</option>
+                        <option value="less_than">is less than (number)</option>
+                        <option value="regex_match">uses a regex pattern — advanced ✦</option>
                     </select>
 
                     <input type="text" id="friendlyPatternInput" class="form-control"
                            style="min-width:220px; flex:1;"
-                           placeholder="Enter the text to look for…" />
+                           placeholder="Type the text to look for…" />
                 </div>
 
-                <div id="patternHelpArea" class="mt-2"></div>
+                <!-- When in regex mode, show the stored raw regex for reference -->
+                <div id="rawRegexRef" class="mt-1 ps-1" style="display:none;">
+                    <span class="text-muted" style="font-size:.78rem;">
+                        <i class="bi bi-code-slash me-1"></i>Stored pattern:
+                        <code id="rawRegexRefCode" class="text-secondary" style="font-size:.78rem;word-break:break-all;"></code>
+                    </span>
+                </div>
+
+                <!-- Dynamic contextual hint based on selected condition type -->
+                <div id="conditionHint" class="mt-2 px-1"></div>
+
+                <div id="patternHelpArea" class="mt-1"></div>
 
                 <!-- regex_match: pattern builder helper -->
                 <div id="regexHelperPanel" class="mt-3 p-3 bg-light border rounded" style="display:none;">
-                    <p class="mb-2 fw-semibold small">Build your pattern:</p>
+                    <p class="mb-1 fw-semibold small">
+                        <i class="bi bi-tools me-1 text-primary"></i>Pattern builder
+                        <span class="fw-normal text-muted"> — fill the boxes below and click Generate</span>
+                    </p>
                     <p class="text-muted small mb-2">
-                        Type the text that appears <em>before</em> the value you want to capture.
-                        The system will create the pattern automatically.
+                        Type the text that appears <em>before</em> the value in the invoice line.
+                        The system will build the pattern automatically — no regex knowledge needed.
                     </p>
                     <div class="row g-2 align-items-center">
-                        <div class="col">
+                        <div class="col-md-5">
+                            <label class="form-label form-label-sm text-muted mb-1">Text BEFORE the value <span class="text-danger">*</span></label>
                             <input type="text" id="patternPrefixInput" class="form-control form-control-sm"
-                                   placeholder="Text that comes BEFORE the value (e.g. 'Invoice No:')" />
+                                   placeholder="e.g. Invoice No:" />
                         </div>
-                        <div class="col-auto text-muted small fw-bold">→ value captured here →</div>
-                        <div class="col">
+                        <div class="col-md-2 text-center">
+                            <div class="text-muted small fw-bold mt-3">→ <span class="badge bg-primary">value</span> →</div>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label form-label-sm text-muted mb-1">Text AFTER the value (optional)</label>
                             <input type="text" id="patternSuffixInput" class="form-control form-control-sm"
-                                   placeholder="Text that comes AFTER (optional)" />
+                                   placeholder="Leave blank if not needed" />
                         </div>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="buildPatternBtn">
-                        Generate Pattern
+                    <div class="d-flex gap-2 mt-2 flex-wrap align-items-center">
+                        <button type="button" class="btn btn-sm btn-primary" id="buildPatternBtn">
+                            <i class="bi bi-magic me-1"></i>Generate Pattern
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="buildPatternSkipBtn"
+                                title="Same as Generate Pattern, but skips one variable word (e.g. a date) between the label and the value">
+                            Generate with [skip]
+                        </button>
+                        <span class="text-muted small">
+                            Use <strong>[skip]</strong> when a variable word (like a date) sits between your label and the value
+                            — e.g. <code>TOTAL DUE BY 04/16/26 -$47.29</code>
+                        </span>
+                    </div>
+                    <div id="generatedPatternPreview" class="mt-2 p-2 bg-white border rounded" style="display:none;">
+                        <span class="text-muted small">Generated: </span>
+                        <code id="generatedPatternCode" class="small text-primary"></code>
+                    </div>
+                </div>
+
+                <!-- ── Invoice line / token picker ────────────────────────── -->
+                <div class="mt-3 p-2 border rounded bg-white d-flex align-items-center gap-3 flex-wrap">
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="editPickerToggle">
+                        <i class="bi bi-file-earmark-text me-1"></i>Pick from invoice
                     </button>
-                    <div id="generatedPatternPreview" class="mt-2" style="display:none;">
-                        <span class="text-muted small">Generated pattern: </span>
-                        <code id="generatedPatternCode" class="small"></code>
+                    <span class="text-muted small">
+                        <strong>Easiest way to build a pattern:</strong> open the invoice, click a line,
+                        then click the exact word you want to capture — the pattern is built for you automatically.
+                    </span>
+                </div>
+                <div id="editPickerPanel" class="mt-2 p-2 border rounded" style="display:none;background:#f8f9fa;">
+                    <div id="editPickerLoading" class="text-muted small py-2 ps-1">⏳ Loading invoice lines…</div>
+                    <div id="editPickerEmpty" class="alert alert-info py-2 mb-0 small" style="display:none;">
+                        No invoice has been uploaded for this carrier yet.
+                        Upload one via the <a asp-action="Wizard" asp-route-carrierId="@carrierId">Add Rule Wizard</a>
+                        or the main Invoice Upload page to enable the line picker.
+                    </div>
+                    <div id="editPickerList" style="display:none;">
+                        <div class="input-group input-group-sm mb-2" style="max-width:320px;">
+                            <span class="input-group-text bg-white border-end-0">🔍</span>
+                            <input type="text" id="editLineSearch" class="form-control border-start-0 ps-0"
+                                   placeholder="Filter lines…" autocomplete="off" />
+                        </div>
+                        <div id="editPdfLinesList" class="border rounded"
+                             style="max-height:240px;overflow-y:auto;background:#fff;"></div>
+                    </div>
+                    <div id="editTokenSection" class="mt-2 pt-2 border-top" style="display:none;">
+                        <div class="small fw-semibold mb-1" id="editTokenTitle">
+                            Click the word that is the <span class="text-primary">value</span> you want to capture:
+                        </div>
+                        <div id="editLineTokens" class="border rounded px-2 py-2 bg-white font-monospace"
+                             style="font-size:0.82rem;line-height:2.2;word-break:break-all;"></div>
+                        <div class="form-text mt-1" id="editTokenHint">
+                            <strong>Click once</strong> to select a word.
+                            <strong>Click a second word</strong> to extend the selection.
+                        </div>
+                        <div id="editPatternPreview" class="alert alert-info py-1 px-2 small mt-2" style="display:none;">
+                            <strong>Pattern set to:</strong> <code id="editPatternPreviewCode"></code>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -296,11 +389,12 @@ RECURRING CHARGE  $0.00  ← trigger line (this line)</pre>
             <div class="mb-4" id="transformSection">
                 <div class="step-badge mb-1">
                     <span class="step-circle">3</span>
-                    <span class="fw-semibold fs-6">Clean up the captured value <span class="fw-normal text-muted small">(optional)</span></span>
+                    <span class="fw-semibold fs-6">Clean up the captured value <span class="badge bg-secondary fw-normal ms-1" style="font-size:.7rem;vertical-align:middle;">Optional</span></span>
                 </div>
                 <p class="text-muted small mb-3 ps-1">
-                    After the value is captured, you can apply one or more cleanup steps —
-                    for example, remove extra text, trim spaces, or reformat a date.
+                    After the value is captured you can optionally transform it — for example,
+                    remove trailing noise, reformat a date to <code>YYYY-MM-DD</code>, or trim spaces.
+                    Skip this step if the captured value is already in the right format.
                 </p>
 
                 <div id="transformSteps" class="mb-3"></div>
@@ -316,9 +410,14 @@ RECURRING CHARGE  $0.00  ← trigger line (this line)</pre>
                  LIVE PREVIEW
             ══════════════════════════════════════════════════════════════ -->
             <div class="mb-4">
-                <div class="section-header">Live Rule Summary</div>
+                <div class="section-header d-flex align-items-center gap-1">
+                    <i class="bi bi-eye"></i> Live Rule Summary
+                    <span class="text-muted fw-normal" style="font-size:.72rem;text-transform:none;letter-spacing:0;">
+                        — updates as you make changes above
+                    </span>
+                </div>
                 <div class="rule-preview-box" id="rulePreviewBox">
-                    <span class="text-muted">Select a field above to see a preview of this rule.</span>
+                    <span class="text-muted">Select a field above to see a plain-English summary of this rule.</span>
                 </div>
             </div>
 
@@ -328,10 +427,13 @@ RECURRING CHARGE  $0.00  ← trigger line (this line)</pre>
                  STEP 4 — Test your rule
             ══════════════════════════════════════════════════════════════ -->
             <div class="mb-4">
-                <div class="step-badge mb-3">
+                <div class="step-badge mb-1">
                     <span class="step-circle">4</span>
                     <span class="fw-semibold fs-6">Test your rule against an invoice</span>
                 </div>
+                <p class="text-muted small mb-3 ps-1">
+                    Run the rule against a real invoice to see which lines it matches and what value it extracts — before saving.
+                </p>
 
                 <div class="d-flex gap-3 align-items-center flex-wrap mb-2">
                     <div class="form-check form-check-inline mb-0">
@@ -368,15 +470,22 @@ RECURRING CHARGE  $0.00  ← trigger line (this line)</pre>
 
             <hr />
 
-            <div class="d-flex gap-2 align-items-center">
-                <button type="submit" class="btn btn-primary px-4">Save Rule</button>
-                <a asp-action="Index" asp-route-carrierId="@carrierId" class="btn btn-outline-secondary">Cancel</a>
+            <div class="d-flex gap-2 align-items-center p-3 bg-light rounded border mt-2">
+                <button type="submit" class="btn btn-primary px-4">
+                    <i class="bi bi-check-lg me-1"></i>Save Rule
+                </button>
+                <a asp-action="Index" asp-route-carrierId="@carrierId" class="btn btn-outline-secondary">
+                    Cancel
+                </a>
+                <span class="text-muted small ms-2">Changes take effect immediately after saving.</span>
                 @if (!isNew)
                 {
                     <form asp-action="Delete" asp-route-id="@Model.Id" asp-route-carrierId="@carrierId" method="post" class="ms-auto"
-                          onsubmit="return confirm('Are you sure you want to delete this rule? This cannot be undone.')">
+                          onsubmit="return confirm('Are you sure you want to delete this rule? This action cannot be undone.')">
                         @Html.AntiForgeryToken()
-                        <button type="submit" class="btn btn-outline-danger">Delete Rule</button>
+                        <button type="submit" class="btn btn-outline-danger">
+                            <i class="bi bi-trash me-1"></i>Delete Rule
+                        </button>
                     </form>
                 }
             </div>
@@ -513,77 +622,188 @@ RECURRING CHARGE  $0.00  ← trigger line (this line)</pre>
         document.getElementById('SortOrder').value = this.value;
     });
 
+    // ── Steps must be declared here so updatePreview() can safely read steps.length
+    // even on the very first call (before the transform section is initialised below).
+    var steps = [];
+    if (modelTransJson) {
+        try { steps = JSON.parse(modelTransJson) || []; } catch(e) { steps = []; }
+    }
+
     // ── Condition builder ─────────────────────────────────────────────────────
     var srcSelect  = document.getElementById('friendlySourceSelect');
     var ctSelect   = document.getElementById('friendlyCondTypeSelect');
     var patInput   = document.getElementById('friendlyPatternInput');
     var helpArea   = document.getElementById('patternHelpArea');
     var regexPanel = document.getElementById('regexHelperPanel');
+    var condHint   = document.getElementById('conditionHint');
+
+    // When this flag is true, patInput is showing a human-readable representation
+    // of the raw regex (which lives in the hidden #RegexPattern field).
+    // syncConditionHiddens will NOT overwrite the hidden field in that case.
+    // Cleared the moment the user types directly into patInput.
+    var _patReadableMode = false;
 
     // Pre-populate condition
     srcSelect.value = modelCondSrc  || 'line_text';
     ctSelect.value  = modelCondType || 'contains';
-    patInput.value  = modelPattern  || '';
+
+    // For regex_match: show the friendly representation in the visible input
+    // while the raw pattern stays in the hidden RegexPattern field (already set by the model).
+    if (modelCondType === 'regex_match' && modelPattern) {
+        var _initialReadable = toReadable(modelPattern);
+        patInput.value      = _initialReadable || modelPattern;
+        _patReadableMode    = !!_initialReadable;
+    } else {
+        patInput.value = modelPattern || '';
+    }
 
     function syncConditionHiddens() {
         document.getElementById('ConditionSource').value = srcSelect.value;
         document.getElementById('ConditionType').value   = ctSelect.value;
-        document.getElementById('RegexPattern').value    = patInput.value;
+        // Only copy patInput → RegexPattern when NOT in readable-display mode.
+        // (In readable mode the raw regex is already in the hidden field.)
+        if (!_patReadableMode) {
+            document.getElementById('RegexPattern').value = patInput.value;
+        }
     }
     syncConditionHiddens();
+
+    // ── Per-condition hint messages ───────────────────────────────────────────
+    var COND_HINTS = {
+        'contains':          '<i class="bi bi-info-circle text-primary me-1"></i>Matches any invoice line where this text appears <strong>anywhere</strong> — e.g. type <code>Invoice No:</code> to match lines containing that label.',
+        'starts_with':       '<i class="bi bi-info-circle text-primary me-1"></i>Matches lines that <strong>begin</strong> with this text exactly — useful when the label is always at the start of the line (e.g. <code>Bill#</code>).',
+        'ends_with':         '<i class="bi bi-info-circle text-primary me-1"></i>Matches lines that <strong>end</strong> with this text — useful when a line always finishes with a known word or code.',
+        'equals':            '<i class="bi bi-info-circle text-primary me-1"></i>The entire line must match <strong>exactly</strong> — every character must be identical (case-insensitive). Rarely used.',
+        'not_equals':        '<i class="bi bi-info-circle text-primary me-1"></i>Matches lines that are <strong>not</strong> this exact text.',
+        'does_not_contain':  '<i class="bi bi-info-circle text-primary me-1"></i>Matches any line that <strong>does not</strong> include this text — useful for filtering out unwanted lines.',
+        'is_empty':          '<i class="bi bi-info-circle text-primary me-1"></i>Matches when the field has <strong>no value</strong>. No text needed.',
+        'is_not_empty':      '<i class="bi bi-info-circle text-primary me-1"></i>Matches when the field has <strong>any value</strong>. No text needed.',
+        'greater_than':      '<i class="bi bi-info-circle text-primary me-1"></i>Matches when the numeric amount is <strong>larger</strong> than the number you enter.',
+        'less_than':         '<i class="bi bi-info-circle text-primary me-1"></i>Matches when the numeric amount is <strong>smaller</strong> than the number you enter.',
+        'regex_match':       '<i class="bi bi-stars text-warning me-1"></i><strong>Advanced — Regex Pattern.</strong> A regular expression (regex) lets you describe a flexible rule for matching text. <em>If you\'re not familiar with regex, use the pattern builder below instead of typing one manually.</em>'
+    };
+
+    // Converts a raw regex pattern to a human-readable description (mirrors server-side ReadablePattern)
+    function toReadable(pat) {
+        if (!pat) return '';
+        // Replace capturing groups (...) with [value]
+        var r = pat.replace(/\((?!\?)[^)]+\)/g, '[value]');
+        r = r.replace(/\\s\+/g, ' ').replace(/\\s\*/g, ' ')
+             .replace(/\\S\+/g, '[skip]').replace(/\\S\*/g, '[skip]')
+             .replace(/\\d\+/g, '#').replace(/\\d\*/g, '#')
+             .replace(/\\\./g, '.').replace(/\\\(/g, '(').replace(/\\\)/g, ')')
+             .replace(/\\\-/g, '-').replace(/\(\?:/g, '').replace(/\(\?i:/g, '')
+             .replace(/\(\?/g, '').replace(/\^/g, '').replace(/\$/g, '')
+             .replace(/\.\?/g, '…').replace(/\.\*/g, '…').replace(/\.\+/g, '…')
+             .replace(/\s+/g, ' ').trim();
+        return r.length > 80 ? r.substring(0, 77) + '…' : r;
+    }
 
     function updateConditionUI() {
         var ct = ctSelect.value;
         regexPanel.style.display = (ct === 'regex_match') ? '' : 'none';
 
+        // Dynamic hint
+        condHint.innerHTML = COND_HINTS[ct]
+            ? '<p class="text-muted small mb-0">' + COND_HINTS[ct] + '</p>'
+            : '';
+
         if (ct === 'is_empty' || ct === 'is_not_empty') {
             patInput.style.display = 'none';
-            helpArea.innerHTML = '<p class="text-muted small mb-0">No value needed — this condition checks whether the field is empty or not.</p>';
+            helpArea.innerHTML = '';
+            _patReadableMode = false;
         } else if (ct === 'regex_match') {
             patInput.style.display = '';
-            patInput.placeholder = 'Advanced: type the regex pattern, or use the builder below';
-            helpArea.innerHTML = '<p class="text-muted small mb-0">A <em>pattern</em> is a flexible way to match text. Use the builder below to create one, or type your own.</p>';
-        } else if (ct === 'greater_than' || ct === 'less_than') {
-            patInput.style.display = '';
-            patInput.placeholder = 'Enter a number (e.g. 0)';
+            patInput.placeholder = 'Use the builder or picker below — or type a raw regex pattern';
             helpArea.innerHTML = '';
+            // When switching to regex_match, show the readable version of whatever
+            // is currently stored in the hidden RegexPattern field.
+            var _rawNow = document.getElementById('RegexPattern').value;
+            if (_rawNow) {
+                var _readNow = toReadable(_rawNow);
+                if (_readNow && _readNow !== _rawNow) {
+                    patInput.value   = _readNow;
+                    _patReadableMode = true;
+                }
+            }
         } else {
             patInput.style.display = '';
-            patInput.placeholder = 'Enter the text to look for…';
+            patInput.placeholder = 'Type the text to look for in the invoice line…';
             helpArea.innerHTML = '';
+            _patReadableMode = false;
         }
+
         syncConditionHiddens();
+        updateRegexReadable();
         updatePreview();
+    }
+
+    // patInput now shows the human-readable version directly (see _patReadableMode flag).
+    // The raw regex lives in the hidden #RegexPattern field.
+    // Show/hide the "Stored pattern: <code>" reference line beneath the input.
+    function updateRegexReadable() {
+        var ct  = ctSelect.value;
+        var raw = document.getElementById('RegexPattern').value;
+        var refDiv  = document.getElementById('rawRegexRef');
+        var refCode = document.getElementById('rawRegexRefCode');
+        if (ct === 'regex_match' && raw && _patReadableMode) {
+            refCode.textContent = raw;
+            refDiv.style.display = '';
+        } else {
+            refDiv.style.display = 'none';
+        }
     }
 
     ctSelect.addEventListener('change', function () { updateConditionUI(); });
     srcSelect.addEventListener('change', function () { syncConditionHiddens(); updatePreview(); });
-    patInput.addEventListener('input', function () { syncConditionHiddens(); updatePreview(); });
+    patInput.addEventListener('input', function () {
+        _patReadableMode = false;
+        syncConditionHiddens();
+        updateRegexReadable();
+        updatePreview();
+    });
 
     updateConditionUI();
 
     // ── Regex pattern builder ─────────────────────────────────────────────────
+    function escPat(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+    function applyBuiltPattern(rawPat) {
+        var readable = toReadable(rawPat);
+        patInput.value = readable || rawPat;
+        document.getElementById('RegexPattern').value = rawPat;
+        _patReadableMode = !!(readable && readable !== rawPat);
+        document.getElementById('generatedPatternCode').textContent = rawPat;
+        document.getElementById('generatedPatternPreview').style.display = '';
+        syncConditionHiddens();
+        updateRegexReadable();
+        updatePreview();
+    }
+
     document.getElementById('buildPatternBtn').addEventListener('click', function () {
         var pre  = document.getElementById('patternPrefixInput').value.trim();
         var suf  = document.getElementById('patternSuffixInput').value.trim();
-        var esc  = function (s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
         var pat  = '';
-        if (pre) pat += esc(pre) + '\\s*';
+        if (pre) pat += escPat(pre) + '\\s*';
         pat += '([\\d.,\\s\\w/-]+?)';
-        if (suf) pat += '\\s*' + esc(suf);
+        if (suf) pat += '\\s*' + escPat(suf);
+        applyBuiltPattern(pat);
+    });
 
-        patInput.value = pat;
-        document.getElementById('generatedPatternCode').textContent = pat;
-        document.getElementById('generatedPatternPreview').style.display = '';
-        syncConditionHiddens();
-        updatePreview();
+    document.getElementById('buildPatternSkipBtn').addEventListener('click', function () {
+        var pre  = document.getElementById('patternPrefixInput').value.trim();
+        var suf  = document.getElementById('patternSuffixInput').value.trim();
+        var pat  = '';
+        if (pre) pat += escPat(pre) + '\\s+';
+        pat += '\\S+\\s+';
+        pat += '\\$?\\s*';
+        pat += '([\\-\\d,]+\\.\\d{2})';
+        if (suf) pat += '\\s*' + escPat(suf);
+        applyBuiltPattern(pat);
     });
 
     // ── Transform steps ───────────────────────────────────────────────────────
-    var steps = [];
-    if (modelTransJson) {
-        try { steps = JSON.parse(modelTransJson) || []; } catch(e) { steps = []; }
-    }
+    // (steps is already initialised above the condition-builder section)
 
     function escHtml(s) {
         return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -784,8 +1004,245 @@ RECURRING CHARGE  $0.00  ← trigger line (this line)</pre>
         });
     });
 
+    // ── Invoice line / token picker ───────────────────────────────────────────
+    (function () {
+        var editLines       = [];
+        var editLinesLoaded = false;
+        var editPendingStart = -1;
+
+        var toggleBtn      = document.getElementById('editPickerToggle');
+        var panel          = document.getElementById('editPickerPanel');
+        var loadingEl      = document.getElementById('editPickerLoading');
+        var emptyEl        = document.getElementById('editPickerEmpty');
+        var listWrap       = document.getElementById('editPickerList');
+        var linesList      = document.getElementById('editPdfLinesList');
+        var tokenSec       = document.getElementById('editTokenSection');
+        var tokenTitle     = document.getElementById('editTokenTitle');
+        var tokenHint      = document.getElementById('editTokenHint');
+        var tokenCont      = document.getElementById('editLineTokens');
+        var previewDiv     = document.getElementById('editPatternPreview');
+        var previewCode    = document.getElementById('editPatternPreviewCode');
+
+        // Toggle open / close
+        toggleBtn.addEventListener('click', function () {
+            var open = panel.style.display !== 'none';
+            panel.style.display = open ? 'none' : '';
+            toggleBtn.innerHTML = open
+                ? '<i class="bi bi-file-earmark-text me-1"></i>Pick from invoice'
+                : '<i class="bi bi-chevron-up me-1"></i>Hide invoice picker';
+            if (!open && !editLinesLoaded) loadLines();
+        });
+
+        function loadLines() {
+            loadingEl.style.display = '';
+            emptyEl.style.display   = 'none';
+            listWrap.style.display  = 'none';
+
+            fetch('/CarrierRules/PdfLines/' + carrierId)
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                loadingEl.style.display = 'none';
+                editLinesLoaded = true;
+                editLines = data.lines || [];
+                if (editLines.length === 0) { emptyEl.style.display = ''; return; }
+                renderLines();
+                listWrap.style.display = '';
+            })
+            .catch(function () {
+                loadingEl.style.display = 'none';
+                emptyEl.style.display   = '';
+            });
+        }
+
+        function renderLines() {
+            linesList.innerHTML = '';
+            editLines.forEach(function (line, idx) {
+                var div = document.createElement('div');
+                div.className = 'edit-line-pick';
+                div.setAttribute('data-text', line.toLowerCase());
+                div.textContent = line;
+                div.addEventListener('click', function () {
+                    linesList.querySelectorAll('.edit-line-pick').forEach(function (el) { el.classList.remove('selected'); });
+                    div.classList.add('selected');
+                    editPendingStart = -1;
+                    renderTokenPicker(line);
+                });
+                linesList.appendChild(div);
+            });
+
+            document.getElementById('editLineSearch').addEventListener('input', function () {
+                var term = this.value.trim().toLowerCase();
+                linesList.querySelectorAll('.edit-line-pick').forEach(function (el) {
+                    el.style.display = (term && !el.getAttribute('data-text').includes(term)) ? 'none' : '';
+                });
+            });
+        }
+
+        function renderTokenPicker(line) {
+            var ct = ctSelect.value;
+            var ft = document.getElementById('FieldType').value || 'string';
+            var isRegex = (ct === 'regex_match');
+
+            if (isRegex) {
+                tokenTitle.innerHTML = 'Click the word that is the <span class="text-primary fw-bold">value</span> to capture:';
+            } else {
+                tokenTitle.innerHTML = 'Click the word(s) that <span class="text-warning fw-bold">identify</span> this line — fills the match pattern:';
+            }
+            tokenHint.innerHTML = '<strong>Click once</strong> to select a word. <strong>Click a second word</strong> to extend.';
+
+            tokenCont.innerHTML = '';
+            previewDiv.style.display = 'none';
+            editPendingStart = -1;
+
+            var tokens = line.trim().split(/\s+/);
+            if (tokens.length === 0) { tokenSec.style.display = 'none'; return; }
+
+            tokens.forEach(function (tok, idx) {
+                var span = document.createElement('span');
+                span.textContent = tok;
+                span.className   = 'badge border me-1 mb-1';
+                span.style.cssText = 'cursor:pointer;font-size:0.82rem;font-weight:400;background:#fff;color:#333;transition:background .1s;';
+
+                span.addEventListener('mouseenter', function () {
+                    if (span.dataset.selected) return;
+                    if (editPendingStart !== -1 && idx !== editPendingStart) {
+                        var f = Math.min(editPendingStart, idx), t2 = Math.max(editPendingStart, idx);
+                        tokenCont.querySelectorAll('span').forEach(function (s, si) {
+                            if (si >= f && si <= t2) s.style.background = '#cfe2ff';
+                        });
+                    } else { span.style.background = '#e7f0ff'; }
+                });
+                span.addEventListener('mouseleave', function () {
+                    tokenCont.querySelectorAll('span').forEach(function (s) {
+                        if (!s.dataset.selected) s.style.background = '#fff';
+                    });
+                    tokenCont.querySelectorAll('span[data-selected]').forEach(function (s) {
+                        s.style.background = '#0d6efd'; s.style.color = '#fff';
+                    });
+                    if (editPendingStart !== -1) {
+                        var ps = tokenCont.querySelectorAll('span')[editPendingStart];
+                        if (ps) { ps.style.background = '#0d6efd'; ps.style.color = '#fff'; }
+                    }
+                });
+
+                span.addEventListener('click', function () {
+                    if (editPendingStart === -1) {
+                        // First click — set range start
+                        editPendingStart = idx;
+                        tokenCont.querySelectorAll('span').forEach(function (s) {
+                            delete s.dataset.selected;
+                            s.style.background = '#fff'; s.style.color = '#333'; s.style.fontWeight = '400';
+                        });
+                        span.dataset.selected = '1';
+                        span.style.background = '#0d6efd'; span.style.color = '#fff'; span.style.fontWeight = '600';
+                        tokenHint.innerHTML = '<strong class="text-success">✓ "' + escHtml(tok) + '" selected.</strong> Click another word to extend, or proceed.';
+                        applyPickerSelection(tokens, idx, idx);
+
+                    } else if (editPendingStart === idx) {
+                        // Deselect
+                        editPendingStart = -1;
+                        tokenCont.querySelectorAll('span').forEach(function (s) {
+                            delete s.dataset.selected; s.style.background = '#fff'; s.style.color = '#333'; s.style.fontWeight = '400';
+                        });
+                        tokenHint.innerHTML = '<strong>Click once</strong> to select a word. <strong>Click a second word</strong> to extend.';
+                        previewDiv.style.display = 'none';
+
+                    } else {
+                        // Second click — extend range
+                        var from2 = Math.min(editPendingStart, idx), to2 = Math.max(editPendingStart, idx);
+                        editPendingStart = -1;
+                        tokenCont.querySelectorAll('span').forEach(function (s, si) {
+                            delete s.dataset.selected;
+                            if (si >= from2 && si <= to2) {
+                                s.dataset.selected = '1';
+                                s.style.background = '#0d6efd'; s.style.color = '#fff'; s.style.fontWeight = '600';
+                            } else {
+                                s.style.background = '#fff'; s.style.color = '#333'; s.style.fontWeight = '400';
+                            }
+                        });
+                        var selTxt = tokens.slice(from2, to2 + 1).join(' ');
+                        tokenHint.innerHTML = '<strong class="text-success">✓ "' + escHtml(selTxt) + '" selected.</strong> Click any word to restart.';
+                        applyPickerSelection(tokens, from2, to2);
+                    }
+                });
+
+                tokenCont.appendChild(span);
+            });
+
+            tokenSec.style.display = '';
+        }
+
+        function applyPickerSelection(tokens, from3, to3) {
+            var ct = ctSelect.value;
+            var ft = document.getElementById('FieldType').value || 'string';
+            var sel = tokens.slice(from3, to3 + 1).join(' ');
+            var rawPat = '';
+
+            if (ct === 'regex_match') {
+                var prefix = tokens.slice(0, from3).join(' ').trimEnd();
+                var esc2   = escPat(prefix)
+                    .replace(/\\ /g, '\\s+')
+                    .replace(/\\\$/g, '\\$?');
+                esc2 = esc2
+                    .replace(/\d{1,2}\/\d{1,2}\/\d{2,4}/g, '\\S+')
+                    .replace(/\d{4}-\d{2}-\d{2}/g, '\\S+')
+                    .replace(/\d{1,2}-\d{1,2}-\d{2,4}/g, '\\S+');
+                var capGrp = pickerCapGroup(ft, sel);
+                rawPat = prefix ? (esc2 + '\\s+\\$?\\s*' + capGrp) : capGrp;
+
+                // Show readable in the visible input, raw in hidden field
+                var readable = toReadable(rawPat);
+                patInput.value = readable || rawPat;
+                document.getElementById('RegexPattern').value = rawPat;
+                _patReadableMode = !!(readable && readable !== rawPat);
+
+            } else if (ct === 'starts_with') {
+                rawPat = tokens.slice(0, to3 + 1).join(' ');
+                patInput.value = rawPat;
+                _patReadableMode = false;
+            } else if (ct === 'ends_with') {
+                rawPat = tokens.slice(from3).join(' ');
+                patInput.value = rawPat;
+                _patReadableMode = false;
+            } else if (ct === 'equals') {
+                rawPat = tokens.join(' ');
+                patInput.value = rawPat;
+                _patReadableMode = false;
+            } else {
+                rawPat = sel;
+                patInput.value = rawPat;
+                _patReadableMode = false;
+            }
+
+            syncConditionHiddens();
+            updateRegexReadable();
+            updatePreview();
+
+            previewCode.textContent = rawPat;
+            previewDiv.style.display = '';
+        }
+
+        function pickerCapGroup(ft, val) {
+            if (ft === 'date')    return '([\\d/\\-]+)';
+            if (ft === 'decimal') return '([\\-\\d,]+\\.\\d{2})';
+            if (val && val.indexOf(' ') >= 0) return '([^\\r\\n]+?)';
+            return '(\\S+)';
+        }
+
+        // Re-render token picker when condition type changes (title/behavior changes)
+        ctSelect.addEventListener('change', function () {
+            var selLine = linesList.querySelector('.edit-line-pick.selected');
+            if (selLine) renderTokenPicker(selLine.textContent);
+        });
+    })();
+
     // Initial preview
     updatePreview();
+
+    // ── Bootstrap popovers ────────────────────────────────────────────────────
+    document.querySelectorAll('[data-bs-toggle="popover"]').forEach(function (el) {
+        new bootstrap.Popover(el, { sanitize: false });
+    });
 })();
 </script>
 }

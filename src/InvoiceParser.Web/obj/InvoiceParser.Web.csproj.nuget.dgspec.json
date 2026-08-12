@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Web\\InvoiceParser.Web.csproj": {}
+    "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Web\\InvoiceParser.Web.csproj": {}
   },
   "projects": {
-    "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Core\\InvoiceParser.Core.csproj": {
+    "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Core\\InvoiceParser.Core.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Core\\InvoiceParser.Core.csproj",
+        "projectUniqueName": "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Core\\InvoiceParser.Core.csproj",
         "projectName": "InvoiceParser.Core",
-        "projectPath": "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Core\\InvoiceParser.Core.csproj",
+        "projectPath": "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Core\\InvoiceParser.Core.csproj",
         "packagesPath": "C:\\Users\\ADMIN\\.nuget\\packages\\",
-        "outputPath": "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Core\\obj\\",
+        "outputPath": "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Core\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -93,14 +93,14 @@
         }
       }
     },
-    "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Infrastructure\\InvoiceParser.Infrastructure.csproj": {
+    "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Infrastructure\\InvoiceParser.Infrastructure.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Infrastructure\\InvoiceParser.Infrastructure.csproj",
+        "projectUniqueName": "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Infrastructure\\InvoiceParser.Infrastructure.csproj",
         "projectName": "InvoiceParser.Infrastructure",
-        "projectPath": "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Infrastructure\\InvoiceParser.Infrastructure.csproj",
+        "projectPath": "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Infrastructure\\InvoiceParser.Infrastructure.csproj",
         "packagesPath": "C:\\Users\\ADMIN\\.nuget\\packages\\",
-        "outputPath": "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Infrastructure\\obj\\",
+        "outputPath": "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Infrastructure\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -121,8 +121,8 @@
           "net7.0": {
             "targetAlias": "net7.0",
             "projectReferences": {
-              "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Core\\InvoiceParser.Core.csproj": {
-                "projectPath": "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Core\\InvoiceParser.Core.csproj"
+              "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Core\\InvoiceParser.Core.csproj": {
+                "projectPath": "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Core\\InvoiceParser.Core.csproj"
               }
             }
           }
@@ -137,7 +137,17 @@
         "net7.0": {
           "targetAlias": "net7.0",
           "dependencies": {
+            "Microsoft.EntityFrameworkCore.Design": {
+              "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[7.0.*, )"
+            },
             "Microsoft.EntityFrameworkCore.SqlServer": {
+              "target": "Package",
+              "version": "[7.0.*, )"
+            },
+            "Microsoft.Extensions.Configuration.Json": {
               "target": "Package",
               "version": "[7.0.*, )"
             }
@@ -162,14 +172,14 @@
         }
       }
     },
-    "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Web\\InvoiceParser.Web.csproj": {
+    "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Web\\InvoiceParser.Web.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Web\\InvoiceParser.Web.csproj",
+        "projectUniqueName": "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Web\\InvoiceParser.Web.csproj",
         "projectName": "InvoiceParser.Web",
-        "projectPath": "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Web\\InvoiceParser.Web.csproj",
+        "projectPath": "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Web\\InvoiceParser.Web.csproj",
         "packagesPath": "C:\\Users\\ADMIN\\.nuget\\packages\\",
-        "outputPath": "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Web\\obj\\",
+        "outputPath": "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Web\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -190,11 +200,11 @@
           "net7.0": {
             "targetAlias": "net7.0",
             "projectReferences": {
-              "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Core\\InvoiceParser.Core.csproj": {
-                "projectPath": "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Core\\InvoiceParser.Core.csproj"
+              "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Core\\InvoiceParser.Core.csproj": {
+                "projectPath": "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Core\\InvoiceParser.Core.csproj"
               },
-              "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Infrastructure\\InvoiceParser.Infrastructure.csproj": {
-                "projectPath": "E:\\VCOM\\InvoiceParser\\src\\InvoiceParser.Infrastructure\\InvoiceParser.Infrastructure.csproj"
+              "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Infrastructure\\InvoiceParser.Infrastructure.csproj": {
+                "projectPath": "E:\\VCOM\\invoice parser\\invoiceparser\\src\\InvoiceParser.Infrastructure\\InvoiceParser.Infrastructure.csproj"
               }
             }
           }

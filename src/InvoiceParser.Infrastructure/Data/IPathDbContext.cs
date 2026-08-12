@@ -9,4 +9,5 @@ public class IPathDbContext : DbContext
 
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Carrier> Carriers => Set<Carrier>();
+    public DbSet<IPathUser> Users => Set<IPathUser>();
 }

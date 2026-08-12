@@ -5,11 +5,13 @@ using InvoiceParser.Core.Entities;
 using InvoiceParser.Core.Services;
 using InvoiceParser.Web.Models;
 using InvoiceParser.Web.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 
 namespace InvoiceParser.Web.Controllers;
 
+[Authorize]
 public class InvoiceController : Controller
 {
     private readonly InvoiceService _invoiceService;
@@ -114,8 +116,10 @@ public class InvoiceController : Controller
             review.InvoiceDueDate = dueDtParsed.ToString("yyyy-MM-dd");
         review.BeginningBalance = MonetaryParser.Clean(parsed.SummaryFields.GetValueOrDefault("beg_bal")) ?? "0.00";
         review.Payment = MonetaryParser.Clean(parsed.SummaryFields.GetValueOrDefault("payment")) ?? "0.00";
+        // prev_adj and curr_adj are not auto-extracted — leave null so the Review page
+        // shows "Manual + Configure" instead of a fake 0.00 Auto badge.
         review.PreviousAdjustments = MonetaryParser.Clean(parsed.SummaryFields.GetValueOrDefault("prev_adj")) ?? "0.00";
-        review.CurrentAdjustments = MonetaryParser.Clean(parsed.SummaryFields.GetValueOrDefault("curr_adj")) ?? "0.00";
+        review.CurrentAdjustments  = MonetaryParser.Clean(parsed.SummaryFields.GetValueOrDefault("curr_adj")) ?? "0.00";
         review.CurrentCharges = MonetaryParser.Clean(parsed.SummaryFields.GetValueOrDefault("curr_chg")) ?? "0.00";
         review.CurrentTax = MonetaryParser.Clean(parsed.SummaryFields.GetValueOrDefault("curr_tax")) ?? "0.00";
         review.EndingBalance = MonetaryParser.Clean(parsed.SummaryFields.GetValueOrDefault("end_bal")) ?? "0.00";

@@ -142,6 +142,8 @@ Other rules:
 - For inventory, extract one record per phone line with the employee name, plan, and device type
 - If usage limit is unlimited, set usage_limit to ""unlimited""
 - Phone numbers or circuit IDs go in the ""line"" or ""line_number"" field
+- ""line_number"" MUST be a real 10-digit NANP phone number (e.g. 916-298-6093). Do NOT use ZIP codes, account numbers, or address fragments as a line_number
+- Do NOT create usage or inventory records for service address lines (lines starting with ""Service at:"" or similar location descriptions)
 - If a field cannot be determined from the text, set it to null
 - Return ONLY the JSON object, no markdown, no commentary, no code fences
 
@@ -284,6 +286,21 @@ INVOICE TEXT:
         return prop.GetString();
     }
 
+    /// <summary>
+    /// Returns true if <paramref name="value"/> looks like a real NANP phone number.
+    /// Accepts: 916-298-6093, (916)298-6093, +19162986093, 9162986093 (bare 10 digits).
+    /// Rejects ZIP codes, account IDs, or any numeric string that isn't 10 or 11 digits
+    /// (preventing "Service at: … 847908181 …" ZIP+4 values from masquerading as line numbers).
+    /// </summary>
+    private static bool IsPhoneNumber(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        var digits = new string(value.Where(char.IsDigit).ToArray());
+        if (digits.Length == 10) return true;
+        if (digits.Length == 11 && digits[0] == '1') return true;
+        return false;
+    }
+
     private static string StripMarkdownFences(string text)
     {
         var trimmed = text.Trim();
@@ -382,7 +399,11 @@ INVOICE TEXT:
                         UsageType = GetJsonString(item, "usage_type"),
                     };
 
-                    if (!string.IsNullOrWhiteSpace(usage.LineNumber))
+                    // Only accept usage items whose line_number looks like a real phone number.
+                    // This prevents service address lines (e.g. "Service at: ... 847908181 ...")
+                    // from being misread as usage records — the ZIP+4 portion would otherwise
+                    // satisfy the old "not empty" guard.
+                    if (IsPhoneNumber(usage.LineNumber))
                         result.Usages.Add(usage);
                 }
             }

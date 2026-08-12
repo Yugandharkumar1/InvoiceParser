@@ -1,0 +1,12 @@
+name: 'CD'
+
+on:
+  push:
+    tags:
+      - '**'
+
+jobs:
+  call-cd-workflow:
+    name: 'Deploy'
+    uses: AppDirect/actions/.github/workflows/cd.yml@master
+    secrets: inherit
